@@ -72,6 +72,12 @@ export default class FsDriverWeb extends FsDriverBase {
 		this.messenger_ = getWorkerMessenger();
 	}
 
+	// Must be called once at startup before any file operations.
+	// The key is derived from the login password in the main thread and sent to the worker.
+	public async setEncryptionKey(key: CryptoKey) {
+		await this.messenger_.remoteApi.setEncryptionKey(key);
+	}
+
 	public override async writeFile(
 		path: string,
 		data: string|ArrayBuffer,

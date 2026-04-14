@@ -3,6 +3,7 @@ import WorkerToWindowMessenger from '@joplin/lib/utils/ipc/WorkerToWindowMesseng
 import Logger, { LogLevel, TargetType } from '@joplin/utils/Logger';
 import { resolve, dirname, basename, normalize, join } from 'path';
 import { Buffer } from 'buffer';
+import { encryptBytes, decryptBytes } from './fsDriverWebCrypto';
 const md5 = require('md5');
 
 const removeReservedWords = (fileName: string) => {
@@ -149,6 +150,17 @@ export class WorkerApi {
 	private virtualFiles_: Map<string, File> = new Map();
 	private externalHandles_: Map<string, FileSystemFileHandle|FileSystemDirectoryHandle> = new Map();
 	private initPromise_: Promise<void>;
+	private encryptionKey_: CryptoKey|null = null;
+
+	// Called once by the main thread immediately after the worker is created.
+	// The CryptoKey is derived from the login password and transferred via structured clone.
+	public setEncryptionKey(key: CryptoKey) {
+		this.encryptionKey_ = key;
+	}
+
+	private isExternalPath_(path: string): boolean {
+		return normalize(path).startsWith(externalDirectoryPrefix);
+	}
 
 	public constructor() {
 		this.initPromise_ = (async () => {
@@ -299,6 +311,24 @@ export class WorkerApi {
 		const handle = await this.pathToFileHandle_(path, true);
 		let write, close;
 
+		// Convert incoming data to a raw ArrayBuffer before possible encryption.
+		let rawBuffer: ArrayBuffer;
+		if (encoding === 'Buffer') {
+			rawBuffer = data as ArrayBuffer;
+		} else if (data instanceof ArrayBuffer) {
+			throw new Error('Cannot write ArrayBuffer to file without encoding = buffer');
+		} else if (encoding === 'utf-8' || encoding === 'utf8') {
+			rawBuffer = new TextEncoder().encode(data).buffer;
+		} else {
+			rawBuffer = Buffer.from(data, encoding).buffer;
+		}
+
+		// Encrypt if a key is set and this is not an external (user-chosen) path.
+		const shouldEncrypt = !!this.encryptionKey_ && !this.isExternalPath_(path);
+		const writeBuffer = shouldEncrypt
+			? await encryptBytes(this.encryptionKey_, rawBuffer)
+			: rawBuffer;
+
 		try {
 			try {
 				const writer = await handle.createSyncAccessHandle();
@@ -310,7 +340,7 @@ export class WorkerApi {
 					at = writer.getSize();
 				}
 
-				write = (data: BufferSource) => writer.write(data, { at });
+				write = (buf: BufferSource) => writer.write(buf, { at });
 				close = () => writer.close();
 			} catch (error) {
 				// In some cases, createSyncAccessHandle isn't available. In other cases,
@@ -318,20 +348,11 @@ export class WorkerApi {
 
 				logger.warn('Failed to createSyncAccessHandle', error);
 				const writer = await handle.createWritable({ keepExistingData: options?.keepExistingData });
-				write = (data: BufferSource) => writer.write(data);
+				write = (buf: BufferSource) => writer.write(buf);
 				close = () => writer.close();
 			}
 
-			if (encoding === 'Buffer') {
-				await write(data as ArrayBuffer);
-			} else if (data instanceof ArrayBuffer) {
-				throw new Error('Cannot write ArrayBuffer to file without encoding = buffer');
-			} else if (encoding === 'utf-8' || encoding === 'utf8') {
-				const encoder = new TextEncoder();
-				await write(encoder.encode(data));
-			} else {
-				await write(Buffer.from(data, encoding).buffer);
-			}
+			await write(writeBuffer);
 		} finally {
 			if (close) {
 				await close();
@@ -369,14 +390,23 @@ export class WorkerApi {
 	public async fileAtPath(path: string) {
 		path = normalize(path);
 
-		let file: File;
 		if (this.virtualFiles_.has(path)) {
-			file = this.virtualFiles_.get(path);
-		} else {
-			const handle = await this.pathToFileHandle_(path);
-			file = await handle.getFile();
+			return this.virtualFiles_.get(path);
 		}
-		return file;
+
+		const handle = await this.pathToFileHandle_(path);
+		const rawFile = await handle.getFile();
+
+		// Decrypt if a key is set and this is not an external (user-chosen) path.
+		const shouldDecrypt = !!this.encryptionKey_ && !this.isExternalPath_(path);
+		if (!shouldDecrypt) {
+			return rawFile;
+		}
+
+		const rawBuffer = await rawFile.arrayBuffer();
+		const plainBuffer = await decryptBytes(this.encryptionKey_, rawBuffer);
+		// Wrap as a File so callers get the same interface as before.
+		return new File([plainBuffer], rawFile.name, { type: rawFile.type, lastModified: rawFile.lastModified });
 	}
 
 	public async readFile(path: string, encoding: BufferEncoding = 'utf-8') {

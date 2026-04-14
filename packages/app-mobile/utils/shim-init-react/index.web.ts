@@ -3,9 +3,25 @@ import type ShimType from '@joplin/lib/shim';
 const shim: typeof ShimType = require('@joplin/lib/shim').default;
 import shimInitShared from './shimInitShared';
 import FsDriverWeb from '../fs-driver/fs-driver-rn.web';
+import deriveFsEncryptionKey from '../fs-driver/fsDriverWebKeyDerivation';
 import { FetchBlobOptions } from '@joplin/lib/types';
 import JoplinError from '@joplin/lib/JoplinError';
 import joplinCrypto from '@joplin/lib/services/e2ee/crypto';
+
+// The login page stores the plaintext password in sessionStorage under this key
+// immediately before the form POST so the app can derive the fs encryption key on boot.
+// It is cleared here after one read so it never persists.
+const SESSION_PASSWORD_KEY = 'joplin-web-boot-password';
+
+const readAndClearBootPassword = (): string|null => {
+	try {
+		const value = sessionStorage.getItem(SESSION_PASSWORD_KEY);
+		if (value) sessionStorage.removeItem(SESSION_PASSWORD_KEY);
+		return value;
+	} catch {
+		return null;
+	}
+};
 
 const shimInit = () => {
 	type GetLocationOptions = { timeout?: number };
@@ -38,6 +54,19 @@ const shimInit = () => {
 	const fsDriver = () => {
 		if (!fsDriver_) {
 			fsDriver_ = new FsDriverWeb();
+
+			// Derive and inject the encryption key if a boot password is available.
+			// This runs asynchronously; the key will be set before any real I/O because
+			// the app's startup tasks (profile load etc.) happen after DOMContentLoaded,
+			// giving the microtask queue time to settle.
+			const password = readAndClearBootPassword();
+			if (password) {
+				// eslint-disable-next-line @typescript-eslint/no-floating-promises -- intentional fire-and-forget; key is set before any I/O
+				(async () => {
+					const key = await deriveFsEncryptionKey(password);
+					await fsDriver_.setEncryptionKey(key);
+				})();
+			}
 		}
 		return fsDriver_;
 	};

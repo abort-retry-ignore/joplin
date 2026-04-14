@@ -1,0 +1,14 @@
+services:
+  joplin-mobile-web:
+    build:
+      context: ../../..
+      dockerfile: packages/app-mobile/docker-web/Dockerfile
+    container_name: joplin-mobile-web
+    restart: unless-stopped
+    ports:
+      - '${APP_PORT:-3111}:3000'
+    environment:
+      APP_PASSWORD: ${APP_PASSWORD:-}
+      APP_PASSWORD_HASH: ${APP_PASSWORD_HASH:-}
+      APP_SESSION_SECRET: ${APP_SESSION_SECRET:-change-this-session-secret}
+      COOKIE_SECURE: ${COOKIE_SECURE:-0}
