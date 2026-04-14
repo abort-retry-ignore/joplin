@@ -180,46 +180,7 @@ const serveFile = (response, filePath) => {
 
 const serveAppIndex = response => {
 	const indexPath = path.join(distDir, 'index.html');
-	const body = fs.readFileSync(indexPath, 'utf8').replace('</body>', `${String.raw`
-		<a href="/logout" id="joplinLogoutLink" aria-label="Log out">Log out</a>
-		<style>
-			#joplinLogoutLink {
-				position: fixed;
-				top: max(16px, env(safe-area-inset-top));
-				right: max(16px, env(safe-area-inset-right));
-				z-index: 2147483647;
-				display: inline-flex;
-				align-items: center;
-				justify-content: center;
-				padding: 10px 14px;
-				border-radius: 999px;
-				border: 1px solid rgba(255, 255, 255, 0.14);
-				background: rgba(15, 23, 42, 0.72);
-				backdrop-filter: blur(18px);
-				-webkit-backdrop-filter: blur(18px);
-				box-shadow: 0 12px 32px rgba(0, 0, 0, 0.25);
-				color: #eef2ff;
-				font: 600 14px/1 Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-				text-decoration: none;
-			}
-
-			#joplinLogoutLink:hover {
-				background: rgba(30, 41, 59, 0.82);
-			}
-
-			@media (prefers-color-scheme: light) {
-				#joplinLogoutLink {
-					border-color: rgba(15, 23, 42, 0.08);
-					background: rgba(255, 255, 255, 0.78);
-					color: #111827;
-				}
-
-				#joplinLogoutLink:hover {
-					background: rgba(248, 250, 252, 0.92);
-				}
-			}
-		</style>
-	</body>`}`);
+	const body = fs.readFileSync(indexPath, 'utf8');
 
 	send(response, 200, body, {
 		...appHeaders,
@@ -579,7 +540,7 @@ const loginPage = errorMessage => `<!DOCTYPE html>
 				});
 
 				// Store the password in sessionStorage before form submit so the app
-				// can derive the fs encryption key on first load, then clear it immediately.
+				// can derive the fs and database encryption keys on first load, then clear it immediately.
 				document.getElementById('loginForm').addEventListener('submit', function() {
 					var pw = document.getElementById('password').value;
 					if (pw) {

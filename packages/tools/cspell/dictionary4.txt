@@ -261,3 +261,6 @@ llamacpp
 bgcolor
 bordercolor
 togglefullscreen
+capi
+FREEONCLOSE
+RESIZEABLE

@@ -107,9 +107,13 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import appReducer from './utils/appReducer';
 import SyncWizard from './components/SyncWizard/SyncWizard';
 import Synchronizer from '@joplin/lib/Synchronizer';
+import resetWebDatabaseStorage, { clearResetPending } from './utils/webDatabaseStorageReset';
+import { extractRecoverableWebDatabaseStartupError, RecoverableWebDatabaseStartupError } from './utils/webDatabaseStartupRecovery';
+import { replaceBootPassword } from './utils/webEncryptionPassword';
 
 const logger = Logger.create('root');
 const perfLogger = PerformanceLogger.create();
+const WEB_STARTUP_RETRY_KEY = 'joplin-web-startup-retry-once';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Old code before rule was applied
 let storeDispatch: any = function(_action: any) {};
@@ -251,8 +255,15 @@ async function initialize(dispatch: Dispatch) {
 			try {
 				await task();
 			} catch (error) {
-				logger.error(`Startup failure during task: ${name}`);
-				throw error;
+				const wrappedError = new Error(`Startup failed during ${name}: ${error}`);
+				// Preserve the recoverable-error tag from the inner error so the
+				// recovery UI can detect it after wrapping.
+				if (error && typeof error === 'object' && '__joplinRecoverableWebDatabaseStartupError' in error) {
+					// eslint-disable-next-line @typescript-eslint/no-explicit-any -- Preserving tagged property across error wrapping.
+					(wrappedError as any).__joplinRecoverableWebDatabaseStartupError = (error as any).__joplinRecoverableWebDatabaseStartupError;
+				}
+				logger.error(wrappedError.message);
+				throw wrappedError;
 			}
 		});
 	}
@@ -278,6 +289,10 @@ interface AppComponentState {
 	sideMenuWidth: number;
 	sensorInfo: SensorInfo;
 	sideMenuContentOpacity: Animated.Value;
+	startupErrorMessage: string|null;
+	recoverableStartupError: RecoverableWebDatabaseStartupError|null;
+	recoveryPassword: string;
+	recoveryBusy: boolean;
 }
 
 class AppComponent extends React.Component<AppComponentProps, AppComponentState> {
@@ -308,6 +323,10 @@ class AppComponent extends React.Component<AppComponentProps, AppComponentState>
 			sideMenuContentOpacity: new Animated.Value(0),
 			sideMenuWidth: this.getSideMenuWidth(),
 			sensorInfo: null,
+			startupErrorMessage: null,
+			recoverableStartupError: null,
+			recoveryPassword: '',
+			recoveryBusy: false,
 		};
 
 		this.lastSyncStarted_ = defaultState.syncStarted;
@@ -374,6 +393,7 @@ class AppComponent extends React.Component<AppComponentProps, AppComponentState>
 	// https://discourse.joplinapp.org/t/webdav-config-encryption-config-randomly-lost-on-android/11364
 	// https://discourse.joplinapp.org/t/android-keeps-on-resetting-my-sync-and-theme/11443
 	public async componentDidMount() {
+		if (this.props.appState === 'error') return;
 		if (this.props.appState === 'starting') {
 			this.props.dispatch({
 				type: 'APP_STATE_SET',
@@ -403,13 +423,39 @@ class AppComponent extends React.Component<AppComponentProps, AppComponentState>
 
 			try {
 				await perfLogger.track('root/initialize', () => initialize(this.props.dispatch));
+				// Startup succeeded — clear reset-pending flag if it was set by a
+				// previous "Delete local data" action.
+				if (Platform.OS === 'web') clearResetPending();
+				if (Platform.OS === 'web') {
+					try {
+						sessionStorage.removeItem(WEB_STARTUP_RETRY_KEY);
+					} catch {
+						// Ignore storage errors.
+					}
+				}
 			} catch (error) {
-				alert(`Something went wrong while starting the application: ${error}`);
+				const errorMessage = `Something went wrong while starting the application: ${error}`;
+				const recoverableStartupError = Platform.OS === 'web' ? extractRecoverableWebDatabaseStartupError(error) : null;
+				if (Platform.OS === 'web' && recoverableStartupError) {
+					try {
+						const alreadyRetried = sessionStorage.getItem(WEB_STARTUP_RETRY_KEY) === '1';
+						if (!alreadyRetried) {
+							sessionStorage.setItem(WEB_STARTUP_RETRY_KEY, '1');
+							location.reload();
+							return;
+						}
+					} catch {
+						// Ignore storage errors and fall through to the error UI.
+					}
+				}
+				logger.error(errorMessage);
+				alert(errorMessage);
+				this.setState({ startupErrorMessage: errorMessage, recoverableStartupError, recoveryBusy: false });
 				this.props.dispatch({
 					type: 'APP_STATE_SET',
 					state: 'error',
 				});
-				throw error;
+				return;
 			}
 
 			// https://reactnative.dev/docs/linking#handling-deep-links
@@ -680,10 +726,67 @@ class AppComponent extends React.Component<AppComponentProps, AppComponentState>
 		return sideMenuWidth;
 	};
 
+	private retryStartup_ = () => {
+		this.setState({ recoveryBusy: true });
+		location.reload();
+	};
+
+	private retryWithPassword_ = async () => {
+		if (!this.state.recoveryPassword.trim()) return;
+		this.setState({ recoveryBusy: true });
+		replaceBootPassword(this.state.recoveryPassword);
+		location.reload();
+	};
+
+	private deleteLocalData_ = async () => {
+		this.setState({ recoveryBusy: true });
+		try {
+			await resetWebDatabaseStorage();
+			location.reload();
+		} catch (error) {
+			const startupErrorMessage = `Could not delete local database: ${error}`;
+			this.setState({ startupErrorMessage, recoveryBusy: false });
+			alert(startupErrorMessage);
+		}
+	};
+
 	public render() {
 		if (this.props.appState !== 'ready') {
 			if (this.props.appState === 'error') {
-				return <Text>Startup error.</Text>;
+				if (Platform.OS === 'web' && this.state.recoverableStartupError) {
+					const recoveryBg = '#1a1a2e';
+					const recoveryText = '#e0e0e0';
+					const recoveryHeading = '#ffffff';
+					const recoveryMuted = '#999';
+					const recoveryBtnBg = '#2a2a4a';
+					const recoveryBtnText = '#e0e0e0';
+					const recoveryBtnBorder = '#555';
+					const btnStyle = { padding: '10px 14px', background: recoveryBtnBg, color: recoveryBtnText, border: `1px solid ${recoveryBtnBorder}`, borderRadius: '6px', cursor: 'pointer' } as React.CSSProperties;
+					return <View style={{ padding: 16, maxWidth: 520, marginLeft: 'auto', marginRight: 'auto', paddingTop: 32, backgroundColor: recoveryBg }}>
+						<Text style={{ fontSize: 22, fontWeight: '700', marginBottom: 12, color: recoveryHeading }}>Could not open local database</Text>
+						<Text style={{ marginBottom: 8, color: recoveryText }}>{this.state.recoverableStartupError.message}</Text>
+						<Text style={{ marginBottom: 16, color: recoveryMuted, fontSize: 12 }}>{this.state.startupErrorMessage ?? 'Startup error.'}</Text>
+						<Text style={{ marginBottom: 8, color: recoveryText }}>Try database password</Text>
+						<input
+							type="password"
+							value={this.state.recoveryPassword}
+							onChange={event => this.setState({ recoveryPassword: (event.target as HTMLInputElement).value })}
+							placeholder="Database password"
+							style={{ width: '100%', boxSizing: 'border-box', padding: 12, marginBottom: 12, borderRadius: 8, border: `1px solid ${recoveryBtnBorder}`, background: '#111', color: '#fff' }}
+						/>
+						<View style={{ flexDirection: 'row', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
+							<button type="button" disabled={this.state.recoveryBusy} onClick={() => void this.retryWithPassword_()} style={btnStyle}>Retry with password</button>
+							<button type="button" disabled={this.state.recoveryBusy} onClick={() => void this.deleteLocalData_()} style={btnStyle}>Delete local data</button>
+							<button type="button" disabled={this.state.recoveryBusy} onClick={this.retryStartup_} style={btnStyle}>Retry</button>
+						</View>
+						<a href="/logout" style={{ color: '#7a9cc6', fontSize: 13 }}>Log out</a>
+					</View>;
+				}
+
+				return <View style={{ padding: 16, maxWidth: 520, marginLeft: 'auto', marginRight: 'auto', paddingTop: 32, backgroundColor: '#1a1a2e' }}>
+					<Text style={{ color: '#ffffff', fontSize: 22, fontWeight: '700', marginBottom: 12 }}>Application startup failed</Text>
+					<Text style={{ color: '#e0e0e0' }}>{this.state.startupErrorMessage ?? 'Startup error.'}</Text>
+				</View>;
 			}
 
 			// Loading can take a particularly long time for the first time on web -- show progress.

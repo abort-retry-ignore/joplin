@@ -90,10 +90,10 @@ const buildSharedConfig = (hotReload: boolean): webpack.Configuration => {
 			},
 			// Prefers .web.js, .web.ts, etc. imports to other imports.
 			extensions: [
-				'.web.js',
-				'.js',
 				'.web.ts',
 				'.ts',
+				'.web.js',
+				'.js',
 				'.web.mjs',
 				'.mjs',
 				'.web.tsx',
@@ -127,8 +127,8 @@ export default (env: Record<string, boolean>) => {
 		...buildSharedConfig(hotReload),
 
 		devServer: {
-			// Required by @sqlite.org/sqlite-wasm
-			// See https://www.npmjs.com/package/@sqlite.org/sqlite-wasm#user-content-in-a-wrapped-worker-with-opfs-if-available
+			// Required by @sqlite.org/sqlite-wasm and SharedArrayBuffer
+			// See https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/SharedArrayBuffer
 			headers: {
 				'Cross-Origin-Opener-Policy': 'same-origin',
 				'Cross-Origin-Embedder-Policy': 'require-corp',

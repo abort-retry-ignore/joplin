@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { PureComponent, ReactElement } from 'react';
 import { connect } from 'react-redux';
-import { View, Text, StyleSheet, TouchableOpacity, ViewStyle } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ViewStyle, Platform } from 'react-native';
 import BackButtonService from '../../services/BackButtonService';
 import NavService from '@joplin/lib/services/NavService';
 import { _, _n } from '@joplin/lib/locale';
@@ -231,6 +231,12 @@ class ScreenHeaderComponent extends PureComponent<ScreenHeaderProps, ScreenHeade
 		this.props.dispatch({ type: 'SET_PLUGIN_PANELS_DIALOG_VISIBLE', visible: true });
 	}
 
+	private logoutButton_press() {
+		if (Platform.OS === 'web') {
+			location.assign('/logout');
+		}
+	}
+
 	private async duplicateButton_press() {
 		const noteIds = this.props.selectedNoteIds;
 
@@ -381,6 +387,17 @@ class ScreenHeaderComponent extends PureComponent<ScreenHeaderProps, ScreenHeade
 				iconName: this.props.viewToggleIconName,
 				description: _('Toggle view/edit'),
 				onPress: this.props.onViewTogglePress,
+				visible: true,
+			});
+		};
+
+		const renderLogoutButton = () => {
+			if (Platform.OS !== 'web' || this.props.noteSelectionEnabled) return null;
+
+			return renderTopButton({
+				iconName: 'ionicon log-out-outline',
+				description: _('Log out'),
+				onPress: () => this.logoutButton_press(),
 				visible: true,
 			});
 		};
@@ -719,6 +736,7 @@ class ScreenHeaderComponent extends PureComponent<ScreenHeaderProps, ScreenHeade
 					{restoreButtonComp}
 					{duplicateButtonComp}
 					{sortButtonComp}
+					{renderLogoutButton()}
 					{menuComp}
 				</View>
 				<WarningBanner

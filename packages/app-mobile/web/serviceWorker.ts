@@ -39,9 +39,14 @@ import 'serviceworker';
  */
 
 let coepCredentialless = false;
+const CACHE_NAME = 'joplin-web-v2';
 if (typeof window === 'undefined') {
 	self.addEventListener('install', () => self.skipWaiting());
-	self.addEventListener('activate', (event: ExtendableEvent) => event.waitUntil(self.clients.claim()));
+	self.addEventListener('activate', (event: ExtendableEvent) => event.waitUntil((async () => {
+		const cacheNames = await caches.keys();
+		await Promise.all(cacheNames.filter(name => name !== CACHE_NAME).map(name => caches.delete(name)));
+		await self.clients.claim();
+	})()));
 
 	const serviceWorkerPath = new URL(self.location.href ?? '').pathname;
 	const mainPageBasePath = serviceWorkerPath.replace(/\/[^/]+$/, '/');
@@ -170,7 +175,7 @@ if (typeof window === 'undefined') {
 			}
 
 			const requestUrl = new URL(event.request.url);
-			const cache = await caches.open('v1');
+			const cache = await caches.open(CACHE_NAME);
 			try {
 				const response = withExtraResponseHeaders(await fetch(request));
 

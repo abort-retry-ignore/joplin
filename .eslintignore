@@ -1027,6 +1027,10 @@ packages/app-mobile/utils/testing/mockPluginServiceSetup.js
 packages/app-mobile/utils/testing/setupGlobalStore.js
 packages/app-mobile/utils/testing/testingLibrary.js
 packages/app-mobile/utils/types.js
+packages/app-mobile/utils/webDatabaseStartupRecovery.js
+packages/app-mobile/utils/webDatabaseStorageReset.js
+packages/app-mobile/utils/webDatabaseStorageReset.web.js
+packages/app-mobile/utils/webEncryptionPassword.js
 packages/app-mobile/web/serviceWorker.js
 packages/app-mobile/web/webpack.config.js
 packages/app-web/__tests__/AuthService.test.js
