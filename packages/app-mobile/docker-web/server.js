@@ -178,6 +178,56 @@ const serveFile = (response, filePath) => {
 	fs.createReadStream(filePath).pipe(response);
 };
 
+const serveAppIndex = response => {
+	const indexPath = path.join(distDir, 'index.html');
+	const body = fs.readFileSync(indexPath, 'utf8').replace('</body>', `${String.raw`
+		<a href="/logout" id="joplinLogoutLink" aria-label="Log out">Log out</a>
+		<style>
+			#joplinLogoutLink {
+				position: fixed;
+				top: max(16px, env(safe-area-inset-top));
+				right: max(16px, env(safe-area-inset-right));
+				z-index: 2147483647;
+				display: inline-flex;
+				align-items: center;
+				justify-content: center;
+				padding: 10px 14px;
+				border-radius: 999px;
+				border: 1px solid rgba(255, 255, 255, 0.14);
+				background: rgba(15, 23, 42, 0.72);
+				backdrop-filter: blur(18px);
+				-webkit-backdrop-filter: blur(18px);
+				box-shadow: 0 12px 32px rgba(0, 0, 0, 0.25);
+				color: #eef2ff;
+				font: 600 14px/1 Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+				text-decoration: none;
+			}
+
+			#joplinLogoutLink:hover {
+				background: rgba(30, 41, 59, 0.82);
+			}
+
+			@media (prefers-color-scheme: light) {
+				#joplinLogoutLink {
+					border-color: rgba(15, 23, 42, 0.08);
+					background: rgba(255, 255, 255, 0.78);
+					color: #111827;
+				}
+
+				#joplinLogoutLink:hover {
+					background: rgba(248, 250, 252, 0.92);
+				}
+			}
+		</style>
+	</body>`}`);
+
+	send(response, 200, body, {
+		...appHeaders,
+		'Cache-Control': 'no-store',
+		'Content-Type': 'text/html; charset=utf-8',
+	});
+};
+
 const loginPage = errorMessage => `<!DOCTYPE html>
 <html lang="en" data-theme="dark">
 	<head>
@@ -573,6 +623,11 @@ const serveApp = (request, response, requestPath) => {
 
 	if (!fileExists(filePath)) {
 		filePath = path.join(distDir, 'index.html');
+	}
+
+	if (filePath === path.join(distDir, 'index.html')) {
+		serveAppIndex(response);
+		return;
 	}
 
 	serveFile(response, filePath);
