@@ -610,11 +610,12 @@ const handleLogin = async (request, response) => {
 
 const serveApp = (request, response, requestPath) => {
 	const relativePath = requestPath.replace(/^\/app\/?/, '');
-	let filePath = path.join(distDir, relativePath || 'index.html');
-
 	if (relativePath === '' || relativePath.endsWith('/')) {
-		filePath = path.join(distDir, relativePath, 'index.html');
+		serveAppIndex(response);
+		return;
 	}
+
+	const filePath = path.join(distDir, relativePath || 'index.html');
 
 	if (!filePath.startsWith(distDir)) {
 		send(response, 403, 'Forbidden', appHeaders);
@@ -622,10 +623,6 @@ const serveApp = (request, response, requestPath) => {
 	}
 
 	if (!fileExists(filePath)) {
-		filePath = path.join(distDir, 'index.html');
-	}
-
-	if (filePath === path.join(distDir, 'index.html')) {
 		serveAppIndex(response);
 		return;
 	}
