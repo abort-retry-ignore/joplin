@@ -1,5 +1,5 @@
 
-export type TransferableObject = ArrayBuffer|Blob|FileSystemHandle;
+export type TransferableObject = ArrayBuffer|Blob|FileSystemHandle|CryptoKey;
 
 // Data that can be sent/received by a RemoteMessenger
 export type SerializableData =

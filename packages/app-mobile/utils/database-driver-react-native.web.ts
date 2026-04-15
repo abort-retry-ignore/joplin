@@ -1,12 +1,10 @@
 import sqlite3InitModule from '@sqlite.org/sqlite-wasm';
 import DatabaseDriver, { DatabaseCloseOptions, DatabaseOpenOptions } from '@joplin/lib/database-driver';
 import { safeFilename } from '@joplin/utils/path';
-import { readBootPassword, clearBootPassword } from './webEncryptionPassword';
+import { readVaultId, readVaultPassword } from './webEncryptionPassword';
 import { attachRecoverableWebDatabaseStartupError } from './webDatabaseStartupRecovery';
 import { isResetPending } from './webDatabaseStorageReset.web';
 
-const IDB_NAME = 'joplin-encrypted-db-store';
-const IDB_STORE = 'databases';
 const PBKDF2_ITERATIONS = 210_000;
 const AUTO_SAVE_INTERVAL_MS = 30_000;
 
@@ -26,82 +24,40 @@ const getModule = (): Promise<Sqlite3Module> => {
 	return modulePromise;
 };
 
-// Cache boot password at module level so multiple driver instances (log.sqlite,
-// database.sqlite) can all read it. The sessionStorage value is cleared only
-// after the password has been cached here.
-let cachedBootPassword: string | null = null;
-let bootPasswordRead = false;
-const getBootPassword = (): string | null => {
-	if (!bootPasswordRead) {
-		cachedBootPassword = readBootPassword();
-		clearBootPassword();
-		bootPasswordRead = true;
-	}
-	return cachedBootPassword;
+// --- Server blob API helpers ---
+
+// Fetch encrypted blob from server. Returns null if no blob exists yet (204).
+const fetchVaultBlob = async (vaultId: string): Promise<ArrayBuffer | null> => {
+	const res = await fetch(`/api/vaults/${encodeURIComponent(vaultId)}/blob`, { credentials: 'same-origin' });
+	if (res.status === 204) return null;
+	if (!res.ok) throw new Error(`Failed to fetch vault blob: ${res.status} ${res.statusText}`);
+	return res.arrayBuffer();
 };
 
-// --- IndexedDB helpers ---
-
-const openIdb = (): Promise<IDBDatabase> => {
-	return new Promise((resolve, reject) => {
-		const req = indexedDB.open(IDB_NAME, 1);
-		req.onupgradeneeded = () => req.result.createObjectStore(IDB_STORE);
-		req.onsuccess = () => resolve(req.result);
-		req.onerror = () => reject(req.error);
+const putVaultBlob = async (vaultId: string, data: ArrayBuffer): Promise<void> => {
+	const res = await fetch(`/api/vaults/${encodeURIComponent(vaultId)}/blob`, {
+		method: 'PUT',
+		credentials: 'same-origin',
+		headers: { 'Content-Type': 'application/octet-stream' },
+		body: data,
 	});
+	if (!res.ok) throw new Error(`Failed to save vault blob: ${res.status} ${res.statusText}`);
 };
 
-const idbGet = async (key: string): Promise<ArrayBuffer | null> => {
-	const db = await openIdb();
-	return new Promise((resolve, reject) => {
-		const tx = db.transaction(IDB_STORE, 'readonly');
-		const req = tx.objectStore(IDB_STORE).get(key);
-		req.onsuccess = () => resolve(req.result ?? null);
-		req.onerror = () => reject(req.error);
-		tx.oncomplete = () => db.close();
-	});
-};
-
-const idbPut = async (key: string, value: ArrayBuffer): Promise<void> => {
-	const db = await openIdb();
-	return new Promise((resolve, reject) => {
-		const tx = db.transaction(IDB_STORE, 'readwrite');
-		tx.objectStore(IDB_STORE).put(value, key);
-		tx.oncomplete = () => { db.close(); resolve(); };
-		tx.onerror = () => { db.close(); reject(tx.error); };
-	});
-};
-
-const idbDelete = async (key: string): Promise<void> => {
-	const db = await openIdb();
-	return new Promise((resolve, reject) => {
-		const tx = db.transaction(IDB_STORE, 'readwrite');
-		tx.objectStore(IDB_STORE).delete(key);
-		tx.oncomplete = () => { db.close(); resolve(); };
-		tx.onerror = () => { db.close(); reject(tx.error); };
-	});
+const fetchVaultSalt = async (vaultId: string): Promise<Uint8Array> => {
+	const res = await fetch(`/api/vaults/${encodeURIComponent(vaultId)}/salt`, { credentials: 'same-origin' });
+	if (!res.ok) throw new Error(`Failed to fetch vault salt: ${res.status} ${res.statusText}`);
+	const { salt } = await res.json() as { salt: string };
+	return Uint8Array.from(atob(salt), c => c.charCodeAt(0));
 };
 
 // --- AES-256-GCM encryption helpers ---
 
-const SALT_KEY = 'joplin-web-db-salt';
-
-const getOrCreateSalt = (): Uint8Array => {
-	const stored = localStorage.getItem(SALT_KEY);
-	if (stored) {
-		const bytes = Uint8Array.from(atob(stored), c => c.charCodeAt(0));
-		if (bytes.length === 32) return bytes;
-	}
-	const salt = crypto.getRandomValues(new Uint8Array(32));
-	localStorage.setItem(SALT_KEY, btoa(String.fromCharCode(...salt)));
-	return salt;
-};
-
-const deriveKey = async (password: string): Promise<CryptoKey> => {
+const deriveKey = async (password: string, salt: Uint8Array): Promise<CryptoKey> => {
 	const enc = new TextEncoder();
 	const keyMaterial = await crypto.subtle.importKey('raw', enc.encode(password), 'PBKDF2', false, ['deriveKey']);
 	return crypto.subtle.deriveKey(
-		{ name: 'PBKDF2', salt: getOrCreateSalt(), iterations: PBKDF2_ITERATIONS, hash: 'SHA-256' },
+		{ name: 'PBKDF2', salt, iterations: PBKDF2_ITERATIONS, hash: 'SHA-256' },
 		keyMaterial,
 		{ name: 'AES-GCM', length: 256 },
 		false,
@@ -132,10 +88,11 @@ export default class DatabaseDriverReactNative implements DatabaseDriver {
 	private lastInsertId_: string;
 	private db_: Sqlite3Db;
 	private sqlite3_: Sqlite3Module;
-	private idbKey_: string;
+	private vaultId_: string | null = null;
 	private cryptoKey_: CryptoKey | null = null;
 	private persistTimer_: ReturnType<typeof setTimeout> | null = null;
 	private persistPromise_: Promise<void> | null = null;
+	private isLogDb_ = false;
 
 	public constructor() {
 		this.lastInsertId_ = null;
@@ -143,18 +100,29 @@ export default class DatabaseDriverReactNative implements DatabaseDriver {
 
 	public async open(options: DatabaseOpenOptions) {
 		const filename = getDatabaseFilename(options.name);
-		this.idbKey_ = filename;
+		this.isLogDb_ = options.name === 'log.sqlite';
 
-		const bootPassword = getBootPassword();
+		const vaultId = readVaultId();
+		const vaultPassword = readVaultPassword();
+		this.vaultId_ = vaultId;
+		const resetRequested = isResetPending();
+
+		if (!this.isLogDb_ && !resetRequested && (!vaultId || !vaultPassword)) {
+			throw attachRecoverableWebDatabaseStartupError(new Error(`Missing vault credentials for "${filename}"`), {
+				databaseName: filename,
+				reason: 'restore',
+				message: 'Vault session expired. Go back to the vault selector and open the vault again.',
+			});
+		}
 
 		const sqlite3 = await getModule();
 		this.sqlite3_ = sqlite3;
 
-		// Only encrypt the main database — log.sqlite is disposable and
-		// encrypting it causes startup failures when sessions change.
-		const shouldEncrypt = bootPassword && options.name !== 'log.sqlite';
+		// Only encrypt the main database — log.sqlite is disposable.
+		const shouldEncrypt = !this.isLogDb_ && vaultId && vaultPassword;
 		if (shouldEncrypt) {
-			this.cryptoKey_ = await deriveKey(bootPassword);
+			const salt = await fetchVaultSalt(vaultId);
+			this.cryptoKey_ = await deriveKey(vaultPassword, salt);
 		}
 
 		// Create in-memory database.
@@ -169,23 +137,14 @@ export default class DatabaseDriverReactNative implements DatabaseDriver {
 		}
 
 		// If a reset was requested (e.g. "Delete local data" from the recovery
-		// screen), skip loading from IDB. Don't clear the flag here — multiple
-		// driver instances (log.sqlite, database.sqlite) need to see it. The
-		// flag is cleared after successful app startup or on next reset call.
-		const resetRequested = isResetPending();
-		if (resetRequested) {
-			try {
-				await idbDelete(filename);
-			} catch {
-				// Best-effort — DB is fresh in-memory anyway.
-			}
-		}
-
-		// Restore from IndexedDB if available (and no reset was requested).
-		if (!resetRequested) {
-			const stored = await idbGet(filename);
+		// screen), skip loading from vault. Don't clear the flag here — multiple
+		// driver instances (log.sqlite, database.sqlite) need to see it.
+		// Restore from server vault blob if available (and no reset was requested).
+		if (!resetRequested && !this.isLogDb_ && vaultId) {
+			const stored = await fetchVaultBlob(vaultId);
 			if (stored && stored.byteLength > 0) {
-				console.info(`[db-driver] Restoring "${filename}" from IDB (${stored.byteLength} bytes, encrypted=${!!this.cryptoKey_})`);
+				// eslint-disable-next-line no-console
+				console.info(`[db-driver] Restoring "${filename}" from vault (${stored.byteLength} bytes, encrypted=${!!this.cryptoKey_})`);
 				let dbBytes: Uint8Array;
 				try {
 					if (this.cryptoKey_) {
@@ -197,7 +156,7 @@ export default class DatabaseDriverReactNative implements DatabaseDriver {
 					throw attachRecoverableWebDatabaseStartupError(new Error(`Could not decrypt database "${filename}": ${error}`), {
 						databaseName: filename,
 						reason: 'restore',
-						message: 'Stored local database could not be decrypted. Password may be wrong, or stored data may be corrupted.',
+						message: 'Stored vault database could not be decrypted. Password may be wrong, or stored data may be corrupted.',
 					});
 				}
 
@@ -213,39 +172,46 @@ export default class DatabaseDriverReactNative implements DatabaseDriver {
 					throw attachRecoverableWebDatabaseStartupError(new Error(`sqlite3_deserialize failed for "${filename}" with code ${rc}`), {
 						databaseName: filename,
 						reason: 'restore',
-						message: 'Stored local database could not be loaded. Password may be wrong, or stored data may be corrupted.',
+						message: 'Stored vault database could not be loaded. Password may be wrong, or stored data may be corrupted.',
 					});
 				}
 			}
-		} else {
+		} else if (resetRequested) {
+			// eslint-disable-next-line no-console
 			console.info(`[db-driver] Reset pending for "${filename}", using fresh in-memory DB`);
 		}
 
-		// Start periodic auto-save.
-		setInterval(() => {
-			void this.persistToIdb_();
-		}, AUTO_SAVE_INTERVAL_MS);
+		// Start periodic auto-save (main DB only).
+		if (!this.isLogDb_) {
+			setInterval(() => {
+				void this.persistToServer_();
+			}, AUTO_SAVE_INTERVAL_MS);
 
-		// Flush on page unload to avoid data loss.
-		window.addEventListener('beforeunload', () => {
-			void this.flush();
-		});
+			window.addEventListener('beforeunload', () => {
+				void this.flush();
+			});
+		}
 	}
 
 	// Schedule persist with debounce. Multiple rapid exec() calls (e.g. during
-	// migrations) coalesce into one IDB write after 500ms of quiet.
+	// migrations) coalesce into one server write after 500ms of quiet.
 	private schedulePersist_(): void {
+		if (this.isLogDb_) return;
 		if (this.persistTimer_) clearTimeout(this.persistTimer_);
-		this.persistTimer_ = setTimeout(() => {
+		this.persistTimer_ = setTimeout(async () => {
 			this.persistTimer_ = null;
-			this.persistPromise_ = this.persistToIdb_().finally(() => {
+			try {
+				this.persistPromise_ = this.persistToServer_();
+				await this.persistPromise_;
+			} finally {
 				this.persistPromise_ = null;
-			});
+			}
 		}, 500);
 	}
 
 	// Flush any pending or in-flight persist. Used before close / page unload.
 	public async flush(): Promise<void> {
+		if (this.isLogDb_) return;
 		if (this.persistTimer_) {
 			clearTimeout(this.persistTimer_);
 			this.persistTimer_ = null;
@@ -253,11 +219,11 @@ export default class DatabaseDriverReactNative implements DatabaseDriver {
 		if (this.persistPromise_) {
 			await this.persistPromise_;
 		}
-		await this.persistToIdb_();
+		await this.persistToServer_();
 	}
 
-	private async persistToIdb_(): Promise<void> {
-		if (!this.db_ || !this.sqlite3_) return;
+	private async persistToServer_(): Promise<void> {
+		if (!this.db_ || !this.sqlite3_ || !this.vaultId_) return;
 		try {
 			// sqlite3_js_db_export handles all pointer management internally
 			// and returns a Uint8Array of the serialized database.
@@ -272,15 +238,18 @@ export default class DatabaseDriverReactNative implements DatabaseDriver {
 				// include unrelated data.
 				toStore = rawBytes.slice().buffer;
 			}
-			await idbPut(this.idbKey_, toStore);
+			await putVaultBlob(this.vaultId_, toStore);
 		} catch (error) {
-			console.warn(`Auto-save of database "${this.idbKey_}" failed: ${error}`);
+			console.warn(`Auto-save of database to vault "${this.vaultId_}" failed: ${error}`);
 		}
 	}
 
 	public async deleteDatabase(options: DatabaseCloseOptions) {
-		const filename = getDatabaseFilename(options.name);
-		await idbDelete(filename);
+		// Deletion is handled via the vault delete API on the vault landing page.
+		// This method is called during local reset; nothing to do here since the
+		// in-memory DB is discarded and a new session will start fresh.
+		// eslint-disable-next-line no-console
+		console.info(`[db-driver] deleteDatabase called for "${options.name}" — vault blob retained until vault is deleted via UI`);
 	}
 
 	public sqliteErrorToJsError(error: Error) {

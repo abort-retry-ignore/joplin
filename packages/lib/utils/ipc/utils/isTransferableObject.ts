@@ -5,6 +5,7 @@ const isTransferableObject = (o: unknown): o is TransferableObject => {
 	if (typeof FileSystemHandle !== 'undefined' && o instanceof FileSystemHandle) return true;
 	if (typeof Blob !== 'undefined' && o instanceof Blob) return true;
 	if (typeof ArrayBuffer !== 'undefined' && o instanceof ArrayBuffer) return true;
+	if (typeof CryptoKey !== 'undefined' && o instanceof CryptoKey) return true;
 
 	return false;
 };

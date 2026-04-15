@@ -58,7 +58,9 @@ export default class JoplinServerApi {
 	}
 
 	public baseUrl() {
-		return rtrimSlashes(this.options_.baseUrl());
+		const baseUrl = rtrimSlashes(this.options_.baseUrl());
+		if (shim.mobilePlatform() !== 'web') return baseUrl;
+		return `${window.location.origin}/joplin-proxy?baseUrl=${encodeURIComponent(baseUrl)}&path=`;
 	}
 
 	public personalizedUserContentBaseUrl(userId: string) {
@@ -169,6 +171,7 @@ export default class JoplinServerApi {
 		if (options === null) options = {};
 		if (!options.responseFormat) options.responseFormat = ExecOptionsResponseFormat.Json;
 		if (!options.target) options.target = ExecOptionsTarget.String;
+		const isWeb = shim.mobilePlatform() === 'web';
 
 		let sessionId = '';
 		if (path !== 'api/sessions' && !sessionId) {
@@ -192,10 +195,12 @@ export default class JoplinServerApi {
 				fetchOptions.body = body;
 			}
 
-			fetchOptions.headers['Content-Length'] = `${shim.stringByteLength(fetchOptions.body)}`;
+			if (!isWeb) fetchOptions.headers['Content-Length'] = `${shim.stringByteLength(fetchOptions.body)}`;
 		}
 
-		let url = `${this.baseUrl()}/${path}`;
+		let url = shim.mobilePlatform() === 'web'
+			? `${this.baseUrl()}${encodeURIComponent(path)}`
+			: `${this.baseUrl()}/${path}`;
 
 		if (query) {
 			url += url.indexOf('?') < 0 ? '?' : '&';
@@ -215,11 +220,11 @@ export default class JoplinServerApi {
 			if (options.source === 'file' && (method === 'POST' || method === 'PUT')) {
 				if (fetchOptions.path) {
 					const fileStat = await shim.fsDriver().stat(fetchOptions.path);
-					if (fileStat) fetchOptions.headers['Content-Length'] = `${fileStat.size}`;
+					if (fileStat && !isWeb) fetchOptions.headers['Content-Length'] = `${fileStat.size}`;
 				}
 				response = await shim.uploadBlob(url, fetchOptions);
 			} else if (options.target === 'string') {
-				if (typeof body === 'string') fetchOptions.headers['Content-Length'] = `${shim.stringByteLength(body)}`;
+				if (typeof body === 'string' && !isWeb) fetchOptions.headers['Content-Length'] = `${shim.stringByteLength(body)}`;
 				response = await shim.fetch(url, fetchOptions);
 			} else {
 				// file

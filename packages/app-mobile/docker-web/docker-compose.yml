@@ -12,3 +12,8 @@ services:
       APP_PASSWORD_HASH: ${APP_PASSWORD_HASH:-}
       APP_SESSION_SECRET: ${APP_SESSION_SECRET:-change-this-session-secret}
       COOKIE_SECURE: ${COOKIE_SECURE:-0}
+    volumes:
+      - vaults:/srv/joplin-mobile-web/vaults
+
+volumes:
+  vaults:

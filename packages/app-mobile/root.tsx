@@ -107,9 +107,9 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import appReducer from './utils/appReducer';
 import SyncWizard from './components/SyncWizard/SyncWizard';
 import Synchronizer from '@joplin/lib/Synchronizer';
-import resetWebDatabaseStorage, { clearResetPending } from './utils/webDatabaseStorageReset';
+import { clearResetPending } from './utils/webDatabaseStorageReset';
 import { extractRecoverableWebDatabaseStartupError, RecoverableWebDatabaseStartupError } from './utils/webDatabaseStartupRecovery';
-import { replaceBootPassword } from './utils/webEncryptionPassword';
+// webEncryptionPassword import removed — vault password is handled via sessionStorage and vault landing page
 
 const logger = Logger.create('root');
 const perfLogger = PerformanceLogger.create();
@@ -731,23 +731,8 @@ class AppComponent extends React.Component<AppComponentProps, AppComponentState>
 		location.reload();
 	};
 
-	private retryWithPassword_ = async () => {
-		if (!this.state.recoveryPassword.trim()) return;
-		this.setState({ recoveryBusy: true });
-		replaceBootPassword(this.state.recoveryPassword);
-		location.reload();
-	};
-
-	private deleteLocalData_ = async () => {
-		this.setState({ recoveryBusy: true });
-		try {
-			await resetWebDatabaseStorage();
-			location.reload();
-		} catch (error) {
-			const startupErrorMessage = `Could not delete local database: ${error}`;
-			this.setState({ startupErrorMessage, recoveryBusy: false });
-			alert(startupErrorMessage);
-		}
+	private goToVaults_ = () => {
+		window.location.href = '/vaults';
 	};
 
 	public render() {
@@ -763,20 +748,12 @@ class AppComponent extends React.Component<AppComponentProps, AppComponentState>
 					const recoveryBtnBorder = '#555';
 					const btnStyle = { padding: '10px 14px', background: recoveryBtnBg, color: recoveryBtnText, border: `1px solid ${recoveryBtnBorder}`, borderRadius: '6px', cursor: 'pointer' } as React.CSSProperties;
 					return <View style={{ padding: 16, maxWidth: 520, marginLeft: 'auto', marginRight: 'auto', paddingTop: 32, backgroundColor: recoveryBg }}>
-						<Text style={{ fontSize: 22, fontWeight: '700', marginBottom: 12, color: recoveryHeading }}>Could not open local database</Text>
+						<Text style={{ fontSize: 22, fontWeight: '700', marginBottom: 12, color: recoveryHeading }}>Could not open vault</Text>
 						<Text style={{ marginBottom: 8, color: recoveryText }}>{this.state.recoverableStartupError.message}</Text>
 						<Text style={{ marginBottom: 16, color: recoveryMuted, fontSize: 12 }}>{this.state.startupErrorMessage ?? 'Startup error.'}</Text>
-						<Text style={{ marginBottom: 8, color: recoveryText }}>Try database password</Text>
-						<input
-							type="password"
-							value={this.state.recoveryPassword}
-							onChange={event => this.setState({ recoveryPassword: (event.target as HTMLInputElement).value })}
-							placeholder="Database password"
-							style={{ width: '100%', boxSizing: 'border-box', padding: 12, marginBottom: 12, borderRadius: 8, border: `1px solid ${recoveryBtnBorder}`, background: '#111', color: '#fff' }}
-						/>
+						<Text style={{ marginBottom: 16, color: recoveryText }}>Go back to the vault selection page and try again with the correct password.</Text>
 						<View style={{ flexDirection: 'row', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
-							<button type="button" disabled={this.state.recoveryBusy} onClick={() => void this.retryWithPassword_()} style={btnStyle}>Retry with password</button>
-							<button type="button" disabled={this.state.recoveryBusy} onClick={() => void this.deleteLocalData_()} style={btnStyle}>Delete local data</button>
+							<button type="button" disabled={this.state.recoveryBusy} onClick={this.goToVaults_} style={btnStyle}>Back to vaults</button>
 							<button type="button" disabled={this.state.recoveryBusy} onClick={this.retryStartup_} style={btnStyle}>Retry</button>
 						</View>
 						<a href="/logout" style={{ color: '#7a9cc6', fontSize: 13 }}>Log out</a>
