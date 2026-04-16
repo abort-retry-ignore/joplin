@@ -9,13 +9,33 @@ const port = Number(process.env.PORT || '3000');
 const sessionCookieName = 'joplin_web_session';
 const vaultCookieName = 'joplin_web_vault';
 const sessionTtlMs = 1000 * 60 * 60 * 24 * 30;
-const sessionSecret = process.env.APP_SESSION_SECRET || process.env.NEXTAUTH_SECRET || 'change-this-session-secret';
 const distDir = path.join(__dirname, 'public');
 const vaultsDir = path.join(__dirname, 'vaults');
 const vaultsRegistryPath = path.join(vaultsDir, 'registry.json');
+const sessionSecretPath = path.join(vaultsDir, '.session-secret');
 
 // Ensure vaults directory exists.
 if (!fs.existsSync(vaultsDir)) fs.mkdirSync(vaultsDir, { recursive: true });
+
+// Session secret: use explicit env var if it's a real (non-placeholder) value.
+// Otherwise, generate a random secret and persist it to the vaults volume so
+// it survives container restarts but is unique per deployment. This prevents
+// session cookies from being valid across different machines.
+const defaultPlaceholders = ['test-session-secret', 'change-this-session-secret', ''];
+const envSecret = process.env.APP_SESSION_SECRET || process.env.NEXTAUTH_SECRET || '';
+const resolveSessionSecret = () => {
+	if (envSecret && !defaultPlaceholders.includes(envSecret)) return envSecret;
+	try {
+		const persisted = fs.readFileSync(sessionSecretPath, 'utf8').trim();
+		if (persisted) return persisted;
+	} catch {
+		// File doesn't exist yet.
+	}
+	const generated = crypto.randomBytes(48).toString('base64url');
+	fs.writeFileSync(sessionSecretPath, generated, 'utf8');
+	return generated;
+};
+const sessionSecret = resolveSessionSecret();
 
 const loginBackground = {
 	dark: '#0a0a0f',
