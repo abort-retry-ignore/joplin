@@ -38,8 +38,8 @@ const resolveSessionSecret = () => {
 const sessionSecret = resolveSessionSecret();
 
 const loginBackground = {
-	dark: '#0a0a0f',
-	light: '#eef2f7',
+	dark: '#0a0e0a',
+	light: '#eef3ea',
 };
 
 const appHeaders = {
@@ -506,18 +506,21 @@ const loginPage = errorMessage => `<!DOCTYPE html>
 			:root,
 			[data-theme="dark"] {
 				color-scheme: dark;
-				--bg-primary: #0a0a0f;
-				--bg-secondary: #12121a;
-				--bg-glass: rgba(18, 18, 30, 0.7);
-				--bg-glass-strong: rgba(10, 10, 15, 0.84);
-				--bg-input: rgba(15, 23, 42, 0.65);
-				--text-primary: #eef2ff;
-				--text-secondary: #b7bfd8;
-				--text-muted: #8390b0;
-				--accent: #7c8cff;
-				--accent-strong: #95a2ff;
-				--border: rgba(255, 255, 255, 0.1);
-				--shadow: 0 30px 80px rgba(0, 0, 0, 0.45);
+				--bg-primary: #0a0e0a;
+				--bg-secondary: #101710;
+				--bg-glass: rgba(12, 18, 12, 0.62);
+				--bg-glass-strong: rgba(16, 24, 16, 0.82);
+				--bg-input: rgba(18, 28, 19, 0.78);
+				--text-primary: #f7fffa;
+				--text-secondary: #d6e6da;
+				--text-muted: #9bb19f;
+				--accent: #2eff6a;
+				--accent-strong: #24f6d9;
+				--accent-soft: rgba(46, 255, 106, 0.12);
+				--border: rgba(98, 255, 148, 0.14);
+				--border-strong: rgba(98, 255, 148, 0.34);
+				--shadow: 0 30px 80px rgba(0, 0, 0, 0.48);
+				--glow: 0 0 0 1px rgba(98, 255, 148, 0.08), 0 18px 48px rgba(36, 246, 217, 0.12);
 				--error-bg: rgba(239, 68, 68, 0.14);
 				--error-border: rgba(248, 113, 113, 0.24);
 				--error-text: #fecaca;
@@ -525,18 +528,21 @@ const loginPage = errorMessage => `<!DOCTYPE html>
 
 			[data-theme="light"] {
 				color-scheme: light;
-				--bg-primary: #eef2f7;
-				--bg-secondary: #dde6f3;
-				--bg-glass: rgba(255, 255, 255, 0.72);
-				--bg-glass-strong: rgba(248, 250, 252, 0.88);
-				--bg-input: rgba(255, 255, 255, 0.88);
-				--text-primary: #111827;
-				--text-secondary: #475569;
-				--text-muted: #64748b;
-				--accent: #4f46e5;
-				--accent-strong: #4338ca;
-				--border: rgba(15, 23, 42, 0.08);
-				--shadow: 0 24px 70px rgba(15, 23, 42, 0.12);
+				--bg-primary: #eef3ea;
+				--bg-secondary: #dfe8dd;
+				--bg-glass: rgba(244, 248, 242, 0.72);
+				--bg-glass-strong: rgba(236, 243, 233, 0.88);
+				--bg-input: rgba(255, 255, 255, 0.68);
+				--text-primary: #182119;
+				--text-secondary: #314233;
+				--text-muted: #617064;
+				--accent: #1cc24b;
+				--accent-strong: #24f6d9;
+				--accent-soft: rgba(28, 194, 75, 0.1);
+				--border: rgba(32, 48, 34, 0.1);
+				--border-strong: rgba(28, 194, 75, 0.26);
+				--shadow: 0 24px 70px rgba(26, 38, 28, 0.12);
+				--glow: 0 0 0 1px rgba(28, 194, 75, 0.06), 0 16px 40px rgba(36, 246, 217, 0.08);
 				--error-bg: rgba(254, 226, 226, 0.9);
 				--error-border: rgba(248, 113, 113, 0.3);
 				--error-text: #991b1b;
@@ -551,8 +557,9 @@ const loginPage = errorMessage => `<!DOCTYPE html>
 				min-height: 100%;
 				font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 				background:
-					radial-gradient(circle at top left, rgba(124, 140, 255, 0.16), transparent 35%),
-					radial-gradient(circle at bottom right, rgba(45, 212, 191, 0.14), transparent 36%),
+					radial-gradient(circle at top left, rgba(46, 255, 106, 0.16), transparent 32%),
+					radial-gradient(circle at top right, rgba(0, 239, 255, 0.09), transparent 28%),
+					radial-gradient(circle at bottom right, rgba(199, 112, 255, 0.12), transparent 34%),
 					linear-gradient(135deg, var(--bg-primary), var(--bg-secondary));
 				color: var(--text-primary);
 			}
@@ -575,11 +582,22 @@ const loginPage = errorMessage => `<!DOCTYPE html>
 			.panel,
 			.form-panel {
 				border: 1px solid var(--border);
-				background: var(--bg-glass);
+				background: linear-gradient(180deg, var(--bg-glass), rgba(255, 255, 255, 0.02));
 				backdrop-filter: blur(22px);
 				-webkit-backdrop-filter: blur(22px);
 				border-radius: 28px;
 				box-shadow: var(--shadow);
+				position: relative;
+				overflow: hidden;
+			}
+
+			.panel::before,
+			.form-panel::before {
+				content: '';
+				position: absolute;
+				inset: 0;
+				background: linear-gradient(135deg, rgba(255, 255, 255, 0.1), transparent 42%, rgba(36, 246, 217, 0.07));
+				pointer-events: none;
 			}
 
 			.panel {
@@ -602,16 +620,18 @@ const loginPage = errorMessage => `<!DOCTYPE html>
 				padding: 8px 12px;
 				border-radius: 999px;
 				border: 1px solid var(--border);
-				background: rgba(255, 255, 255, 0.04);
+				background: var(--accent-soft);
 				color: var(--text-secondary);
 				font-size: 13px;
 				letter-spacing: 0.02em;
+				box-shadow: var(--glow);
 			}
 
 			h1 {
 				margin: 18px 0 12px;
 				font-size: clamp(2.6rem, 4vw, 4rem);
 				line-height: 0.98;
+				text-shadow: 0 0 24px rgba(46, 255, 106, 0.16);
 			}
 
 			.lead {
@@ -633,8 +653,21 @@ const loginPage = errorMessage => `<!DOCTYPE html>
 				align-items: flex-start;
 				padding: 14px 16px;
 				border-radius: 18px;
-				background: rgba(255, 255, 255, 0.04);
+				background: linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.02));
 				border: 1px solid var(--border);
+				transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
+			}
+
+			.feature:hover {
+				transform: translateY(-2px);
+				border-color: var(--border-strong);
+				box-shadow: var(--glow);
+				background: linear-gradient(180deg, var(--accent-soft), rgba(255, 255, 255, 0.02));
+			}
+
+			.feature > div:first-child {
+				color: var(--accent);
+				font-weight: 700;
 			}
 
 			.feature strong {
@@ -677,6 +710,14 @@ const loginPage = errorMessage => `<!DOCTYPE html>
 				border-radius: 999px;
 				cursor: pointer;
 				font-size: 1rem;
+				transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
+			}
+
+			.theme-toggle:hover {
+				transform: translateY(-1px);
+				border-color: var(--border-strong);
+				box-shadow: var(--glow);
+				background: var(--accent-soft);
 			}
 
 			label {
@@ -691,16 +732,19 @@ const loginPage = errorMessage => `<!DOCTYPE html>
 				padding: 15px 16px;
 				border-radius: 16px;
 				border: 1px solid var(--border);
-				background: var(--bg-input);
+				background: linear-gradient(180deg, var(--bg-input), rgba(255, 255, 255, 0.02));
 				color: var(--text-primary);
 				font-size: 1rem;
 				outline: none;
 				margin-bottom: 16px;
+				transition: border-color 0.18s ease, box-shadow 0.18s ease, background 0.18s ease, transform 0.18s ease;
 			}
 
 			input:focus {
-				border-color: rgba(124, 140, 255, 0.65);
-				box-shadow: 0 0 0 4px rgba(124, 140, 255, 0.14);
+				border-color: var(--border-strong);
+				box-shadow: 0 0 0 4px rgba(46, 255, 106, 0.12), 0 0 28px rgba(36, 246, 217, 0.1);
+				background: var(--bg-glass-strong);
+				transform: translateY(-1px);
 			}
 
 			button[type="submit"] {
@@ -709,11 +753,18 @@ const loginPage = errorMessage => `<!DOCTYPE html>
 				border: none;
 				border-radius: 16px;
 				background: linear-gradient(135deg, var(--accent), var(--accent-strong));
-				color: white;
+				color: #031107;
 				font-size: 1rem;
 				font-weight: 700;
 				cursor: pointer;
-				box-shadow: 0 12px 28px rgba(79, 70, 229, 0.28);
+				box-shadow: 0 14px 34px rgba(36, 246, 217, 0.22);
+				transition: transform 0.18s ease, box-shadow 0.18s ease, filter 0.18s ease;
+			}
+
+			button[type="submit"]:hover {
+				transform: translateY(-2px);
+				box-shadow: 0 18px 42px rgba(36, 246, 217, 0.28);
+				filter: saturate(1.1) brightness(1.04);
 			}
 
 			.error {
@@ -743,8 +794,15 @@ const loginPage = errorMessage => `<!DOCTYPE html>
 			.mini-card {
 				padding: 16px;
 				border-radius: 18px;
-				background: rgba(255, 255, 255, 0.04);
+				background: linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.02));
 				border: 1px solid var(--border);
+				transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+			}
+
+			.mini-card:hover {
+				transform: translateY(-2px);
+				border-color: var(--border-strong);
+				box-shadow: var(--glow);
 			}
 
 			.mini-card strong {
@@ -777,9 +835,9 @@ const loginPage = errorMessage => `<!DOCTYPE html>
 			<section class="panel">
 				<div>
 					<div class="kicker">Private browser workspace</div>
-					<h1>Joplin Web, wrapped for the browser.</h1>
+					<h1>Joplin Web with server-backed vaults.</h1>
 					<p class="lead">
-						This keeps the existing mobile-based Joplin web app intact, but serves it from Docker behind a single local login.
+						This keeps the existing mobile-based Joplin web app intact, but serves it from Docker behind a local login and per-vault unlock flow.
 					</p>
 					<div class="feature-list">
 						<div class="feature">
@@ -788,7 +846,7 @@ const loginPage = errorMessage => `<!DOCTYPE html>
 						</div>
 						<div class="feature">
 							<div>02</div>
-							<div><strong>Docker hosted</strong><span>The server, auth gate, and static hosting all run in one container.</span></div>
+							<div><strong>Docker hosted</strong><span>The login gateway, vault API, proxy, and static hosting all run in one container.</span></div>
 						</div>
 						<div class="feature">
 							<div>03</div>
@@ -797,16 +855,16 @@ const loginPage = errorMessage => `<!DOCTYPE html>
 					</div>
 				</div>
 				<div class="mini-card-row">
-					<div class="mini-card"><strong>Local-first</strong><span>Data remains browser-local for this phase.</span></div>
-					<div class="mini-card"><strong>Protected</strong><span>App assets are served only after login.</span></div>
-					<div class="mini-card"><strong>Ready</strong><span>Good base for later Joplin Server integration.</span></div>
+					<div class="mini-card"><strong>Vault-backed</strong><span>Each vault is a separate encrypted database blob stored on the server.</span></div>
+					<div class="mini-card"><strong>Protected</strong><span>Login is required before the vault selector and app are available.</span></div>
+					<div class="mini-card"><strong>Sync ready</strong><span>Joplin Server sync already runs through a same-origin proxy.</span></div>
 				</div>
 			</section>
 			<section class="form-panel">
 				<div class="form-header">
 					<div>
-						<div class="form-title">Unlock workspace</div>
-						<div class="form-subtitle">Enter the local password to open the web app.</div>
+						<div class="form-title">Unlock vault workspace</div>
+						<div class="form-subtitle">Enter the local password to reach the vault selector, then unlock a vault with its own password.</div>
 					</div>
 					<button class="theme-toggle" id="themeToggle" type="button" aria-label="Toggle theme">◐</button>
 				</div>
@@ -814,7 +872,7 @@ const loginPage = errorMessage => `<!DOCTYPE html>
 				<form method="post" action="/login" id="loginForm">
 					<label for="password">Password</label>
 					<input id="password" name="password" type="password" autocomplete="current-password" autofocus required />
-					<button type="submit">Enter Joplin</button>
+					<button type="submit">Continue to vaults</button>
 				</form>
 				<p class="footer-note">
 					This login is enforced by the Docker host process. The app itself lives at <code>/app/</code> so its service worker stays scoped away from the login screen.
@@ -885,18 +943,21 @@ const vaultPage = () => `<!DOCTYPE html>
 		<style>
 			:root, [data-theme="dark"] {
 				color-scheme: dark;
-				--bg-primary: #0a0a0f;
-				--bg-secondary: #12121a;
-				--bg-glass: rgba(18, 18, 30, 0.7);
-				--bg-glass-strong: rgba(10, 10, 15, 0.84);
-				--bg-input: rgba(15, 23, 42, 0.65);
-				--text-primary: #eef2ff;
-				--text-secondary: #b7bfd8;
-				--text-muted: #8390b0;
-				--accent: #7c8cff;
-				--accent-strong: #95a2ff;
-				--border: rgba(255, 255, 255, 0.1);
-				--shadow: 0 30px 80px rgba(0, 0, 0, 0.45);
+				--bg-primary: #0a0e0a;
+				--bg-secondary: #101710;
+				--bg-glass: rgba(12, 18, 12, 0.62);
+				--bg-glass-strong: rgba(16, 24, 16, 0.82);
+				--bg-input: rgba(18, 28, 19, 0.78);
+				--text-primary: #f7fffa;
+				--text-secondary: #d6e6da;
+				--text-muted: #9bb19f;
+				--accent: #2eff6a;
+				--accent-strong: #24f6d9;
+				--accent-soft: rgba(46, 255, 106, 0.12);
+				--border: rgba(98, 255, 148, 0.14);
+				--border-strong: rgba(98, 255, 148, 0.34);
+				--shadow: 0 30px 80px rgba(0, 0, 0, 0.48);
+				--glow: 0 0 0 1px rgba(98, 255, 148, 0.08), 0 18px 48px rgba(36, 246, 217, 0.12);
 				--error-bg: rgba(239, 68, 68, 0.14);
 				--error-border: rgba(248, 113, 113, 0.24);
 				--error-text: #fecaca;
@@ -906,18 +967,21 @@ const vaultPage = () => `<!DOCTYPE html>
 			}
 			[data-theme="light"] {
 				color-scheme: light;
-				--bg-primary: #eef2f7;
-				--bg-secondary: #dde6f3;
-				--bg-glass: rgba(255, 255, 255, 0.72);
-				--bg-glass-strong: rgba(248, 250, 252, 0.88);
-				--bg-input: rgba(255, 255, 255, 0.88);
-				--text-primary: #111827;
-				--text-secondary: #475569;
-				--text-muted: #64748b;
-				--accent: #4f46e5;
-				--accent-strong: #4338ca;
-				--border: rgba(15, 23, 42, 0.08);
-				--shadow: 0 24px 70px rgba(15, 23, 42, 0.12);
+				--bg-primary: #eef3ea;
+				--bg-secondary: #dfe8dd;
+				--bg-glass: rgba(244, 248, 242, 0.72);
+				--bg-glass-strong: rgba(236, 243, 233, 0.88);
+				--bg-input: rgba(255, 255, 255, 0.68);
+				--text-primary: #182119;
+				--text-secondary: #314233;
+				--text-muted: #617064;
+				--accent: #1cc24b;
+				--accent-strong: #24f6d9;
+				--accent-soft: rgba(28, 194, 75, 0.1);
+				--border: rgba(32, 48, 34, 0.1);
+				--border-strong: rgba(28, 194, 75, 0.26);
+				--shadow: 0 24px 70px rgba(26, 38, 28, 0.12);
+				--glow: 0 0 0 1px rgba(28, 194, 75, 0.06), 0 16px 40px rgba(36, 246, 217, 0.08);
 				--error-bg: rgba(254, 226, 226, 0.9);
 				--error-border: rgba(248, 113, 113, 0.3);
 				--error-text: #991b1b;
@@ -930,8 +994,9 @@ const vaultPage = () => `<!DOCTYPE html>
 				margin: 0; min-height: 100%;
 				font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 				background:
-					radial-gradient(circle at top left, rgba(124, 140, 255, 0.16), transparent 35%),
-					radial-gradient(circle at bottom right, rgba(45, 212, 191, 0.14), transparent 36%),
+					radial-gradient(circle at top left, rgba(46, 255, 106, 0.16), transparent 32%),
+					radial-gradient(circle at top right, rgba(0, 239, 255, 0.09), transparent 28%),
+					radial-gradient(circle at bottom right, rgba(199, 112, 255, 0.12), transparent 34%),
 					linear-gradient(135deg, var(--bg-primary), var(--bg-secondary));
 				color: var(--text-primary);
 			}
@@ -939,12 +1004,21 @@ const vaultPage = () => `<!DOCTYPE html>
 			.shell { width: 100%; max-width: 580px; }
 			.panel {
 				border: 1px solid var(--border);
-				background: var(--bg-glass);
+				background: linear-gradient(180deg, var(--bg-glass), rgba(255, 255, 255, 0.02));
 				backdrop-filter: blur(22px);
 				-webkit-backdrop-filter: blur(22px);
 				border-radius: 28px;
 				box-shadow: var(--shadow);
 				padding: 32px;
+				position: relative;
+				overflow: hidden;
+			}
+			.panel::before {
+				content: '';
+				position: absolute;
+				inset: 0;
+				background: linear-gradient(135deg, rgba(255, 255, 255, 0.1), transparent 42%, rgba(36, 246, 217, 0.07));
+				pointer-events: none;
 			}
 			.page-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 28px; }
 			.page-title { font-size: 1.5rem; font-weight: 700; }
@@ -954,22 +1028,33 @@ const vaultPage = () => `<!DOCTYPE html>
 				padding: 10px 18px; border-radius: 14px; font-size: 0.93rem; font-weight: 600;
 				cursor: pointer; border: 1px solid var(--border); background: var(--bg-glass-strong);
 				color: var(--text-primary); white-space: nowrap;
+				transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease, background 0.18s ease, filter 0.18s ease;
+			}
+			.btn:hover {
+				transform: translateY(-2px);
+				border-color: var(--border-strong);
+				box-shadow: var(--glow);
+				background: linear-gradient(180deg, var(--accent-soft), rgba(255, 255, 255, 0.02));
 			}
 			.btn-primary {
 				background: linear-gradient(135deg, var(--accent), var(--accent-strong));
-				border-color: transparent; color: #fff;
-				box-shadow: 0 8px 20px rgba(79, 70, 229, 0.24);
+				border-color: transparent; color: #031107;
+				box-shadow: 0 14px 34px rgba(36, 246, 217, 0.22);
+			}
+			.btn-primary:hover {
+				box-shadow: 0 18px 42px rgba(36, 246, 217, 0.28);
+				filter: saturate(1.1) brightness(1.04);
 			}
 			.btn-danger { border-color: rgba(239,68,68,0.35); color: #fca5a5; background: rgba(239,68,68,0.10); }
 			.vault-list { display: grid; gap: 10px; margin-bottom: 24px; }
 			.vault-card {
 				padding: 16px 18px; border-radius: 18px;
-				border: 1px solid var(--border); background: rgba(255,255,255,0.04);
+				border: 1px solid var(--border); background: linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0.02));
 				cursor: pointer; display: flex; align-items: center; justify-content: space-between;
-				transition: border-color 0.15s;
+				transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
 			}
-			.vault-card:hover { border-color: rgba(124,140,255,0.45); }
-			.vault-card.selected { border-color: var(--accent); background: rgba(124,140,255,0.08); }
+			.vault-card:hover { transform: translateY(-2px); border-color: var(--border-strong); box-shadow: var(--glow); background: linear-gradient(180deg, var(--accent-soft), rgba(255,255,255,0.02)); }
+			.vault-card.selected { border-color: var(--accent); background: linear-gradient(180deg, rgba(46,255,106,0.14), rgba(36,246,217,0.08)); box-shadow: var(--glow); }
 			.vault-name { font-weight: 600; }
 			.vault-date { color: var(--text-muted); font-size: 0.85rem; margin-top: 2px; }
 			.vault-del { font-size: 0.8rem; padding: 6px 11px; border-radius: 10px; }
@@ -978,10 +1063,11 @@ const vaultPage = () => `<!DOCTYPE html>
 			label { display: block; margin-bottom: 8px; font-size: 0.93rem; font-weight: 600; }
 			input[type="text"], input[type="password"] {
 				width: 100%; padding: 13px 15px; border-radius: 14px;
-				border: 1px solid var(--border); background: var(--bg-input);
+				border: 1px solid var(--border); background: linear-gradient(180deg, var(--bg-input), rgba(255,255,255,0.02));
 				color: var(--text-primary); font-size: 1rem; outline: none; margin-bottom: 14px;
+				transition: border-color 0.18s ease, box-shadow 0.18s ease, background 0.18s ease, transform 0.18s ease;
 			}
-			input:focus { border-color: rgba(124,140,255,0.65); box-shadow: 0 0 0 4px rgba(124,140,255,0.14); }
+			input:focus { border-color: var(--border-strong); box-shadow: 0 0 0 4px rgba(46,255,106,0.12), 0 0 28px rgba(36,246,217,0.1); background: var(--bg-glass-strong); transform: translateY(-1px); }
 			.notice {
 				padding: 12px 15px; border-radius: 14px; font-size: 0.88rem; line-height: 1.5;
 				margin-bottom: 14px;
@@ -1000,6 +1086,13 @@ const vaultPage = () => `<!DOCTYPE html>
 				appearance: none; border: 1px solid var(--border); background: var(--bg-glass-strong);
 				color: var(--text-primary); width: 36px; height: 36px; border-radius: 999px;
 				cursor: pointer; font-size: 0.9rem;
+				transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
+			}
+			.theme-toggle:hover {
+				transform: translateY(-1px);
+				border-color: var(--border-strong);
+				box-shadow: var(--glow);
+				background: var(--accent-soft);
 			}
 		</style>
 	</head>

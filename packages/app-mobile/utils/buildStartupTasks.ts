@@ -273,6 +273,9 @@ const buildStartupTasks = (
 		if (Setting.value('firstStart')) {
 			const detectedLocale = shim.detectAndSetLocale(Setting);
 			reg.logger().info(`First start: detected locale as ${detectedLocale}`);
+			Setting.setValue('theme', Setting.THEME_MATRIX_LIGHT);
+			Setting.setValue('preferredLightTheme', Setting.THEME_MATRIX_LIGHT);
+			Setting.setValue('preferredDarkTheme', Setting.THEME_MATRIX_DARK);
 
 			if (shim.mobilePlatform() === 'web') {
 				// Web browsers generally have more limited storage than desktop and mobile apps:
@@ -288,6 +291,18 @@ const buildStartupTasks = (
 			Setting.setValue('firstStart', false);
 		} else {
 			await Setting.applyMigrations();
+		}
+
+		if (shim.mobilePlatform() === 'web') {
+			const preferredLightTheme = Setting.value('preferredLightTheme');
+			const preferredDarkTheme = Setting.value('preferredDarkTheme');
+			if (preferredLightTheme === Setting.THEME_LIGHT && preferredDarkTheme === Setting.THEME_DARK) {
+				Setting.setValue('preferredLightTheme', Setting.THEME_MATRIX_LIGHT);
+				Setting.setValue('preferredDarkTheme', Setting.THEME_MATRIX_DARK);
+				const currentTheme = Setting.value('theme');
+				if (currentTheme === Setting.THEME_LIGHT) Setting.setValue('theme', Setting.THEME_MATRIX_LIGHT);
+				if (currentTheme === Setting.THEME_DARK) Setting.setValue('theme', Setting.THEME_MATRIX_DARK);
+			}
 		}
 
 		if (Setting.value('env') === Env.Dev) {
