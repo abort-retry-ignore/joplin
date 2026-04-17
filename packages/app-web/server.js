@@ -4,7 +4,8 @@ const path = require('path');
 
 const host = process.env.HOST || '0.0.0.0';
 const port = Number(process.env.PORT || '3001');
-const serverBaseUrl = process.env.JOPLIN_SERVER_BASE_URL || 'http://localhost:22300';
+const joplinServerOrigin = process.env.JOPLIN_SERVER_ORIGIN || 'http://server:22300';
+const joplinPublicBasePath = process.env.JOPLIN_PUBLIC_BASE_PATH || '/joplin';
 const publicDir = path.join(__dirname, 'public');
 
 const contentTypes = {
@@ -47,7 +48,37 @@ const serveFile = (response, filePath) => {
 const renderIndex = () => {
 	const templatePath = path.join(publicDir, 'index.html');
 	const template = fs.readFileSync(templatePath, 'utf8');
-	return template.replace(/__JOPLIN_SERVER_BASE_URL__/g, serverBaseUrl);
+	return template.replace(/__JOPLIN_PUBLIC_BASE_PATH__/g, joplinPublicBasePath);
+};
+
+const proxyToJoplinServer = (request, response, url) => {
+	const targetPath = url.pathname.replace(joplinPublicBasePath, '') || '/';
+	const targetUrl = new URL(joplinServerOrigin);
+	const headers = { ...request.headers };
+	headers.host = request.headers.host || '';
+	delete headers.origin;
+	delete headers.referer;
+	headers['x-forwarded-host'] = request.headers.host || '';
+	headers['x-forwarded-proto'] = (request.headers['x-forwarded-proto'] || 'http');
+
+	const upstreamRequest = http.request({
+		hostname: targetUrl.hostname,
+		port: targetUrl.port,
+		path: targetPath + url.search,
+		method: request.method,
+		headers,
+	}, upstreamResponse => {
+		response.writeHead(upstreamResponse.statusCode || 502, upstreamResponse.headers);
+		upstreamResponse.pipe(response);
+	});
+
+	upstreamRequest.on('error', error => {
+		send(response, 502, `Upstream Joplin Server proxy error: ${error.message}`, {
+			'Content-Type': 'text/plain; charset=utf-8',
+		});
+	});
+
+	request.pipe(upstreamRequest);
 };
 
 const server = http.createServer((request, response) => {
@@ -55,6 +86,11 @@ const server = http.createServer((request, response) => {
 
 	if (url.pathname === '/health') {
 		send(response, 200, 'ok', { 'Content-Type': 'text/plain; charset=utf-8' });
+		return;
+	}
+
+	if (url.pathname === joplinPublicBasePath || url.pathname.startsWith(`${joplinPublicBasePath}/`)) {
+		proxyToJoplinServer(request, response, url);
 		return;
 	}
 
