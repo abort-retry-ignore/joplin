@@ -396,3 +396,51 @@ test('POST /fragments/upload returns 401 for unauthenticated user', async () => 
 		assert.equal(res.statusCode, 401);
 	});
 });
+
+test('GET /fragments/editor/:id includes folder dropdown', async () => {
+	await withServer({
+		itemService: {
+			noteByUserIdAndJopId: async () => ({ id: 'n1', title: 'My Note', body: 'text', parentId: 'f2', updatedTime: Date.now() }),
+			foldersByUserId: async () => [
+				{ id: 'f1', title: 'Work', parentId: '' },
+				{ id: 'f2', title: 'Personal', parentId: '' },
+			],
+		},
+	}, async port => {
+		const res = await request(port, { path: '/fragments/editor/n1' });
+		assert.equal(res.statusCode, 200);
+		assert.ok(res.body.includes('<select name="parentId"'));
+		assert.ok(res.body.includes('Work'));
+		assert.ok(res.body.includes('Personal'));
+		// f2 should be selected
+		assert.ok(res.body.includes('value="f2" selected'));
+	});
+});
+
+test('POST /fragments/preview renders markdown to HTML', async () => {
+	await withServer({}, async port => {
+		const res = await request(port, {
+			path: '/fragments/preview',
+			method: 'POST',
+			headers: { Cookie: 'sessionId=test-session', 'Content-Type': 'application/x-www-form-urlencoded' },
+			body: 'body=**bold**+and+*italic*',
+		});
+		assert.equal(res.statusCode, 200);
+		assert.ok(res.body.includes('<strong>bold</strong>'));
+		assert.ok(res.body.includes('<em>italic</em>'));
+	});
+});
+
+test('POST /fragments/preview renders Joplin resource images', async () => {
+	await withServer({}, async port => {
+		const res = await request(port, {
+			path: '/fragments/preview',
+			method: 'POST',
+			headers: { Cookie: 'sessionId=test-session', 'Content-Type': 'application/x-www-form-urlencoded' },
+			body: 'body=!%5Bphoto%5D(%3A%2Fabcdef01234567890abcdef012345678)',
+		});
+		assert.equal(res.statusCode, 200);
+		assert.ok(res.body.includes('src="/resources/abcdef01234567890abcdef012345678"'));
+		assert.ok(res.body.includes('class="preview-img"'));
+	});
+});

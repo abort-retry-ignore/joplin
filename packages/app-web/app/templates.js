@@ -68,21 +68,27 @@ const noteListFragment = (notes, selectedNoteId, folderId) => {
 };
 
 // Column 3: editor
-const editorFragment = (note) => {
+const editorFragment = (note, folders) => {
 	if (!note) {
 		return '<div class="editor-empty">Select a note</div>';
 	}
+	const folderOptions = (folders || []).map(f =>
+		`<option value="${escapeHtml(f.id)}"${f.id === note.parentId ? ' selected' : ''}>${escapeHtml(f.title || 'Untitled')}</option>`,
+	).join('');
 	return `<form class="editor-form" id="note-editor-form"
 		hx-put="/fragments/editor/${encodeURIComponent(note.id)}"
-		hx-trigger="input changed delay:1s from:find input, input changed delay:1s from:find textarea"
+		hx-trigger="input changed delay:1s from:find input, input changed delay:1s from:find textarea, change changed from:find select"
 		hx-target="#autosave-status"
 		hx-swap="innerHTML"
 		hx-indicator="#autosave-indicator">
 		<div class="editor-titlebar">
+			<select name="parentId" class="editor-folder-select" title="Move to folder">${folderOptions}</select>
+			<span class="editor-folder-arrow">&#9656;</span>
 			<input type="text" name="title" class="editor-title"
 				value="${escapeHtml(note.title || '')}" placeholder="Note title" />
 			<span id="autosave-status"></span>
 			<span id="autosave-indicator" class="htmx-indicator">Saving...</span>
+			<button type="button" class="btn btn-icon" title="Preview" id="preview-toggle" onclick="togglePreview()">&#128065;</button>
 			<button type="button" class="btn btn-icon btn-danger" title="Delete"
 				hx-delete="/fragments/notes/${encodeURIComponent(note.id)}"
 				hx-target="#notelist-panel"
@@ -116,10 +122,70 @@ const editorFragment = (note) => {
 		<textarea name="body" class="editor-body" id="note-body"
 			placeholder="Start writing..."
 			ondrop="handleDrop(event)" ondragover="event.preventDefault()">${escapeHtml(note.body || '')}</textarea>
+		<div class="editor-preview" id="note-preview" style="display:none"></div>
 	</form>`;
 };
 
 const autosaveStatusFragment = () => '<span class="autosave-ok">Saved</span>';
+
+// Simple markdown to HTML renderer (handles common Joplin markdown)
+const renderMarkdown = (markdown) => {
+	if (!markdown) return '';
+	let html = escapeHtml(markdown);
+
+	// Code blocks (``` ... ```) — must be before inline rules
+	html = html.replace(/```(\w*)\n([\s\S]*?)```/g, (_m, _lang, code) => `<pre><code>${code}</code></pre>`);
+
+	// Headings
+	html = html.replace(/^######\s+(.+)$/gm, '<h6>$1</h6>');
+	html = html.replace(/^#####\s+(.+)$/gm, '<h5>$1</h5>');
+	html = html.replace(/^####\s+(.+)$/gm, '<h4>$1</h4>');
+	html = html.replace(/^###\s+(.+)$/gm, '<h3>$1</h3>');
+	html = html.replace(/^##\s+(.+)$/gm, '<h2>$1</h2>');
+	html = html.replace(/^#\s+(.+)$/gm, '<h1>$1</h1>');
+
+	// Horizontal rule
+	html = html.replace(/^---+$/gm, '<hr>');
+
+	// Bold + italic
+	html = html.replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>');
+	// Bold
+	html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+	// Italic
+	html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
+	// Strikethrough
+	html = html.replace(/~~(.+?)~~/g, '<del>$1</del>');
+	// Inline code
+	html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
+
+	// Joplin resource images: ![alt](:/resourceId)
+	html = html.replace(/!\[([^\]]*)\]\(:\/([0-9a-zA-Z]{32})\)/g, '<img src="/resources/$2" alt="$1" class="preview-img" />');
+	// Regular images: ![alt](url)
+	html = html.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<img src="$2" alt="$1" class="preview-img" />');
+	// Joplin resource links: [text](:/resourceId)
+	html = html.replace(/\[([^\]]*)\]\(:\/([0-9a-zA-Z]{32})\)/g, '<a href="/resources/$2">$1</a>');
+	// Regular links: [text](url)
+	html = html.replace(/\[([^\]]*)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+
+	// Checkboxes
+	html = html.replace(/^- \[x\]\s+(.+)$/gm, '<div class="md-checkbox checked">&#9745; $1</div>');
+	html = html.replace(/^- \[ \]\s+(.+)$/gm, '<div class="md-checkbox">&#9744; $1</div>');
+
+	// Unordered lists
+	html = html.replace(/^[-*]\s+(.+)$/gm, '<li>$1</li>');
+	// Wrap consecutive <li> in <ul>
+	html = html.replace(/((?:<li>.*<\/li>\n?)+)/g, '<ul>$1</ul>');
+
+	// Blockquote
+	html = html.replace(/^&gt;\s+(.+)$/gm, '<blockquote>$1</blockquote>');
+
+	// Paragraphs: double newline
+	html = html.replace(/\n\n+/g, '</p><p>');
+	// Single newline to <br> (but not inside pre/block elements)
+	html = html.replace(/\n/g, '<br>');
+
+	return `<p>${html}</p>`;
+};
 
 const searchResultsFragment = (notes) => {
 	if (!notes.length) return '<div class="empty-hint">No results</div>';
@@ -211,6 +277,7 @@ const layoutPage = (options = {}) => {
 	function insertImg(){var u=prompt('Image URL:');if(u)insertTxt('![image]('+u+')')}
 	function uploadFile(f){if(!f)return;var fd=new FormData();fd.append('file',f);var s=document.getElementById('autosave-status');if(s)s.innerHTML='<span class="autosave-saving">Uploading...</span>';fetch('/fragments/upload',{method:'POST',body:fd}).then(function(r){return r.json()}).then(function(d){if(d.error){alert(d.error);return}insertTxt(d.markdown)}).catch(function(e){alert('Upload failed: '+e.message)}).finally(function(){if(s)s.innerHTML=''})}
 	function handleDrop(e){e.preventDefault();var files=e.dataTransfer&&e.dataTransfer.files;if(!files||!files.length)return;for(var i=0;i<files.length;i++)uploadFile(files[i])}
+	function togglePreview(){var ta=document.getElementById('note-body'),pv=document.getElementById('note-preview'),tb=document.getElementById('editor-toolbar'),btn=document.getElementById('preview-toggle');if(!ta||!pv)return;if(pv.style.display==='none'){var fd=new FormData();fd.append('body',ta.value);fetch('/fragments/preview',{method:'POST',body:fd}).then(function(r){return r.text()}).then(function(h){pv.innerHTML=h;pv.style.display='';ta.style.display='none';if(tb)tb.style.display='none';if(btn)btn.innerHTML='&#9998;';if(btn)btn.title='Edit'})}else{pv.style.display='none';ta.style.display='';if(tb)tb.style.display='';if(btn)btn.innerHTML='&#128065;';if(btn)btn.title='Preview'}}
 	document.addEventListener('keydown',function(e){if(!getTA())return;if((e.ctrlKey||e.metaKey)&&e.key==='b'){e.preventDefault();wrapSel('**','**')}if((e.ctrlKey||e.metaKey)&&e.key==='i'){e.preventDefault();wrapSel('*','*')}});
 	</script>
 </body>
@@ -227,6 +294,7 @@ module.exports = {
 	noteListFragment,
 	editorFragment,
 	autosaveStatusFragment,
+	renderMarkdown,
 	searchResultsFragment,
 	layoutPage,
 	loggedOutPage,

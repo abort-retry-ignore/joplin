@@ -265,6 +265,24 @@ button { cursor: pointer; border: none; background: none; }
 	outline: none;
 }
 
+.editor-folder-select {
+	padding: 3px 6px;
+	border: 1px solid var(--border);
+	border-radius: 4px;
+	background: var(--bg-sidebar);
+	color: var(--text);
+	font-size: 12px;
+	max-width: 160px;
+	outline: none;
+	cursor: pointer;
+}
+.editor-folder-select:focus { border-color: var(--accent); }
+.editor-folder-arrow {
+	color: var(--text-dim);
+	font-size: 14px;
+	margin: 0 2px;
+}
+
 /* Toolbar */
 .editor-toolbar {
 	display: flex;
@@ -311,6 +329,53 @@ button { cursor: pointer; border: none; background: none; }
 	line-height: 1.65;
 	tab-size: 4;
 }
+
+/* Preview pane */
+.editor-preview {
+	flex: 1;
+	padding: 16px 20px;
+	overflow-y: auto;
+	font-size: 15px;
+	line-height: 1.7;
+	color: var(--text);
+}
+.editor-preview h1, .editor-preview h2, .editor-preview h3,
+.editor-preview h4, .editor-preview h5, .editor-preview h6 {
+	color: var(--text-heading);
+	margin: 1em 0 0.5em;
+}
+.editor-preview h1 { font-size: 1.8em; }
+.editor-preview h2 { font-size: 1.5em; }
+.editor-preview h3 { font-size: 1.25em; }
+.editor-preview strong { color: var(--text-heading); }
+.editor-preview a { color: var(--accent); }
+.editor-preview code {
+	background: var(--bg-hover);
+	padding: 2px 5px;
+	border-radius: 3px;
+	font-family: 'SF Mono', 'Fira Code', Consolas, monospace;
+	font-size: 0.9em;
+}
+.editor-preview pre {
+	background: var(--bg-hover);
+	padding: 12px 16px;
+	border-radius: 6px;
+	overflow-x: auto;
+	margin: 1em 0;
+}
+.editor-preview pre code { background: none; padding: 0; }
+.editor-preview blockquote {
+	border-left: 3px solid var(--accent);
+	margin: 1em 0;
+	padding: 4px 16px;
+	color: var(--text-dim);
+}
+.editor-preview hr { border: none; border-top: 1px solid var(--border); margin: 1.5em 0; }
+.editor-preview ul { padding-left: 1.5em; margin: 0.5em 0; }
+.editor-preview li { margin: 0.25em 0; }
+.editor-preview .md-checkbox { margin: 0.25em 0; }
+.editor-preview .md-checkbox.checked { text-decoration: line-through; opacity: 0.7; }
+.preview-img { max-width: 100%; border-radius: 6px; margin: 8px 0; }
 
 /* Autosave */
 .autosave-ok { color: var(--accent); font-size: 11px; opacity: 0.8; }

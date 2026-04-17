@@ -365,6 +365,21 @@ const createServer = options => {
 			return;
 		}
 
+		// --- Markdown preview ---
+		if (url.pathname === '/fragments/preview' && request.method === 'POST') {
+			try {
+				const auth = await authenticatedUser(request);
+				if (auth.error) { sendHtml(response, 401, '<div>Session expired</div>'); return; }
+
+				const body = await parseBody(request);
+				const html = templates.renderMarkdown(body.body || '');
+				sendHtml(response, 200, html);
+			} catch (error) {
+				sendHtml(response, 500, '<div>Preview error</div>');
+			}
+			return;
+		}
+
 		// --- htmx fragment: search ---
 		if (url.pathname === '/fragments/search' && request.method === 'GET') {
 			try {
@@ -388,9 +403,12 @@ const createServer = options => {
 				if (auth.error) { sendHtml(response, 401, '<div class="editor-empty">Session expired.</div>'); return; }
 
 				const noteId = decodeURIComponent(url.pathname.slice('/fragments/editor/'.length));
-				const note = await itemService.noteByUserIdAndJopId(auth.user.id, noteId);
+				const [note, folders] = await Promise.all([
+					itemService.noteByUserIdAndJopId(auth.user.id, noteId),
+					itemService.foldersByUserId(auth.user.id),
+				]);
 				if (!note) { sendHtml(response, 404, '<div class="editor-empty">Note not found.</div>'); return; }
-				sendHtml(response, 200, templates.editorFragment(note));
+				sendHtml(response, 200, templates.editorFragment(note, folders));
 			} catch (error) {
 				sendHtml(response, 500, '<div class="editor-empty">Error</div>');
 			}
@@ -410,6 +428,7 @@ const createServer = options => {
 				await itemWriteService.updateNote(auth.user.sessionId, existing, {
 					title: body.title,
 					body: body.body,
+					parentId: body.parentId,
 				}, upstreamRequestContext(request));
 
 				// Build OOB swap to update the note list item sidebar
