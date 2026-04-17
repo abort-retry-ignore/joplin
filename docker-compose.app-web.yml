@@ -44,3 +44,8 @@ services:
             - PORT=3001
             - JOPLIN_SERVER_ORIGIN=http://server:22300
             - JOPLIN_PUBLIC_BASE_PATH=/joplin
+            - POSTGRES_PASSWORD=joplin
+            - POSTGRES_DATABASE=joplin
+            - POSTGRES_USER=joplin
+            - POSTGRES_PORT=5432
+            - POSTGRES_HOST=db

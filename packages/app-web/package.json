@@ -4,7 +4,11 @@
 	"version": "0.1.0",
 	"description": "Thin-client web frontend skeleton for Joplin Server",
 	"main": "server.js",
+	"dependencies": {
+		"pg": "8.16.3"
+	},
 	"scripts": {
-		"start": "node server.js"
+		"start": "node server.js",
+		"test": "node --test tests/*.test.js"
 	}
 }

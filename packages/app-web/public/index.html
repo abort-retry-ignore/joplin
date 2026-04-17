@@ -7,14 +7,18 @@
 		<link rel="manifest" href="/manifest.webmanifest" />
 		<link rel="icon" href="/icon.svg" type="image/svg+xml" />
 		<link rel="stylesheet" href="/styles.css" />
+		<script defer src="/app.js"></script>
 		<title>Joplock</title>
 	</head>
-	<body>
+	<body data-joplin-base-path="__JOPLIN_PUBLIC_BASE_PATH__">
 		<div class="background"></div>
 		<main class="shell">
-			<section class="hero-card">
+			<section class="hero-card app-section">
 				<div class="eyebrow">Thin Client Preview</div>
-				<h1>Joplock PWA shell</h1>
+				<div class="hero-topbar">
+					<h1>Joplock PWA shell</h1>
+					<button class="button secondary toolbar-button" id="logoutButton" type="button" hidden>Logout</button>
+				</div>
 				<p class="lead">
 					Distinct web client for Joplin Server. Same auth. Same backend. Minimal browser storage.
 				</p>
@@ -22,27 +26,50 @@
 					<a class="button primary" href="__JOPLIN_PUBLIC_BASE_PATH__/login">Login to Joplin Server</a>
 					<a class="button secondary" href="__JOPLIN_PUBLIC_BASE_PATH__">Open Server Home</a>
 				</div>
+				<div class="status-row" id="sessionStatus">Checking session...</div>
 			</section>
 
-			<section class="grid">
+			<section class="grid app-section">
 				<article class="panel">
 					<h2>Current state</h2>
 					<ul>
-						<li>PWA shell only</li>
-						<li>Online-only design</li>
-						<li>Server-authoritative model</li>
-						<li>Same-origin integration target</li>
+						<li>Read-only thin client</li>
+						<li>Shared Joplin Server session</li>
+						<li>Live folders and note reads</li>
+						<li>Minimal browser storage</li>
 					</ul>
 				</article>
 				<article class="panel">
 					<h2>Next milestones</h2>
 					<ul>
-						<li>Authenticate through Joplin Server session</li>
-						<li>Add `/api/web/*` endpoints</li>
-						<li>Render folders and note list</li>
-						<li>Serve built assets from `packages/server`</li>
+						<li>Add safe write endpoints</li>
+						<li>Support create and edit note flows</li>
+						<li>Preserve thin-client data boundary</li>
+						<li>Expand focused UI coverage</li>
 					</ul>
 				</article>
+			</section>
+
+			<section class="workspace app-section" id="workspace" hidden>
+				<aside class="panel sidebar-panel">
+					<div class="section-header">
+						<h2>Folders</h2>
+						<div class="section-meta" id="folderCount">0</div>
+					</div>
+					<div class="list-stack" id="folderList"></div>
+				</aside>
+				<section class="panel notes-panel">
+					<div class="section-header">
+						<h2>Notes</h2>
+						<div class="section-meta" id="noteCount">0</div>
+					</div>
+					<div class="two-pane">
+						<div class="list-stack note-list" id="noteList"></div>
+						<article class="note-detail" id="noteDetail">
+							<div class="note-detail-empty">Select a note to view its content.</div>
+						</article>
+					</div>
+				</section>
 			</section>
 		</main>
 		<script>
