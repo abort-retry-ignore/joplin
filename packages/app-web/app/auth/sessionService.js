@@ -51,6 +51,7 @@ const createSessionService = database => {
 
 			return {
 				id: row.id,
+				sessionId: row.session_id,
 				email: row.email,
 				fullName: row.full_name,
 				isAdmin: !!Number(row.is_admin),

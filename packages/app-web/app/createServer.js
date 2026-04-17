@@ -33,6 +33,29 @@ const sendJson = (response, statusCode, body) => {
 	});
 };
 
+const readJsonBody = request => {
+	return new Promise((resolve, reject) => {
+		let body = '';
+		request.setEncoding('utf8');
+		request.on('data', chunk => {
+			body += chunk;
+		});
+		request.on('end', () => {
+			if (!body) {
+				resolve({});
+				return;
+			}
+
+			try {
+				resolve(JSON.parse(body));
+			} catch (error) {
+				reject(new Error('Invalid JSON body'));
+			}
+		});
+		request.on('error', reject);
+	});
+};
+
 const serveFile = (response, filePath) => {
 	const extension = path.extname(filePath).toLowerCase();
 	const contentType = contentTypes[extension] || 'application/octet-stream';
@@ -52,10 +75,14 @@ const createServer = options => {
 		publicDir,
 		renderIndex,
 		joplinPublicBasePath,
+		joplinPublicBaseUrl,
 		joplinServerOrigin,
 		sessionService,
 		itemService,
+		itemWriteService,
 	} = options;
+
+	const configuredPublicUrl = new URL(joplinPublicBaseUrl);
 
 	const authenticatedUser = async request => {
 		const sessionId = sessionIdFromHeaders(request.headers);
@@ -65,15 +92,20 @@ const createServer = options => {
 		return { error: null, user };
 	};
 
+	const upstreamRequestContext = request => ({
+		host: request.headers.host || configuredPublicUrl.host,
+		protocol: request.headers['x-forwarded-proto'] || configuredPublicUrl.protocol.replace(':', ''),
+	});
+
 	const proxyToJoplinServer = (request, response, url) => {
 		const targetPath = url.pathname.replace(joplinPublicBasePath, '') || '/';
 		const targetUrl = new URL(joplinServerOrigin);
 		const headers = { ...request.headers };
-		headers.host = request.headers.host || '';
+		headers.host = request.headers.host || configuredPublicUrl.host;
 		delete headers.origin;
 		delete headers.referer;
-		headers['x-forwarded-host'] = request.headers.host || '';
-		headers['x-forwarded-proto'] = (request.headers['x-forwarded-proto'] || 'http');
+		headers['x-forwarded-host'] = request.headers.host || configuredPublicUrl.host;
+		headers['x-forwarded-proto'] = (request.headers['x-forwarded-proto'] || configuredPublicUrl.protocol.replace(':', ''));
 
 		const upstreamRequest = http.request({
 			hostname: targetUrl.hostname,
@@ -118,6 +150,31 @@ const createServer = options => {
 		}
 
 		if (url.pathname === '/api/web/folders') {
+			if (request.method === 'POST') {
+				try {
+					const auth = await authenticatedUser(request);
+					if (auth.error) {
+						sendJson(response, 401, { error: auth.error });
+						return;
+					}
+
+					const body = await readJsonBody(request);
+					const title = `${body.title || ''}`.trim();
+					const parentId = `${body.parentId || ''}`;
+					if (!title) {
+						sendJson(response, 400, { error: 'Folder title is required' });
+						return;
+					}
+
+					const created = await itemWriteService.createFolder(auth.user.sessionId, { title, parentId }, upstreamRequestContext(request));
+					const folder = await itemService.folderByUserIdAndJopId(auth.user.id, created.id);
+					sendJson(response, 201, { item: folder });
+				} catch (error) {
+					sendJson(response, error.statusCode || 500, { error: error.message || `${error}` });
+				}
+				return;
+			}
+
 			try {
 				const auth = await authenticatedUser(request);
 				if (auth.error) {
@@ -132,7 +189,59 @@ const createServer = options => {
 			return;
 		}
 
+		if (request.method === 'DELETE' && url.pathname.startsWith('/api/web/folders/')) {
+			try {
+				const auth = await authenticatedUser(request);
+				if (auth.error) {
+					sendJson(response, 401, { error: auth.error });
+					return;
+				}
+
+				const folderId = decodeURIComponent(url.pathname.slice('/api/web/folders/'.length));
+				if (!folderId) {
+					sendJson(response, 404, { error: 'Folder not found' });
+					return;
+				}
+
+				await itemWriteService.deleteFolder(auth.user.sessionId, folderId, upstreamRequestContext(request));
+				sendJson(response, 204, {});
+			} catch (error) {
+				sendJson(response, error.statusCode || 500, { error: error.message || `${error}` });
+			}
+			return;
+		}
+
 		if (url.pathname === '/api/web/notes') {
+			if (request.method === 'POST') {
+				try {
+					const auth = await authenticatedUser(request);
+					if (auth.error) {
+						sendJson(response, 401, { error: auth.error });
+						return;
+					}
+
+					const body = await readJsonBody(request);
+					const title = `${body.title || ''}`.trim();
+					const parentId = `${body.parentId || ''}`;
+					const noteBody = `${body.body || ''}`;
+					if (!parentId) {
+						sendJson(response, 400, { error: 'Note parentId is required' });
+						return;
+					}
+
+					const created = await itemWriteService.createNote(auth.user.sessionId, {
+						title: title || 'Untitled note',
+						body: noteBody,
+						parentId,
+					}, upstreamRequestContext(request));
+					const note = await itemService.noteByUserIdAndJopId(auth.user.id, created.id);
+					sendJson(response, 201, { item: note });
+				} catch (error) {
+					sendJson(response, error.statusCode || 500, { error: error.message || `${error}` });
+				}
+				return;
+			}
+
 			try {
 				const auth = await authenticatedUser(request);
 				if (auth.error) {
@@ -149,6 +258,28 @@ const createServer = options => {
 		}
 
 		if (url.pathname.startsWith('/api/web/notes/')) {
+			if (request.method === 'DELETE') {
+				try {
+					const auth = await authenticatedUser(request);
+					if (auth.error) {
+						sendJson(response, 401, { error: auth.error });
+						return;
+					}
+
+					const noteId = decodeURIComponent(url.pathname.slice('/api/web/notes/'.length));
+					if (!noteId) {
+						sendJson(response, 404, { error: 'Note not found' });
+						return;
+					}
+
+					await itemWriteService.deleteNote(auth.user.sessionId, noteId, upstreamRequestContext(request));
+					sendJson(response, 204, {});
+				} catch (error) {
+					sendJson(response, error.statusCode || 500, { error: error.message || `${error}` });
+				}
+				return;
+			}
+
 			try {
 				const auth = await authenticatedUser(request);
 				if (auth.error) {

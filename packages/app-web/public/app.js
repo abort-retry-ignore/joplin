@@ -10,8 +10,12 @@ const elements = {
 	sessionStatus: document.getElementById('sessionStatus'),
 	workspace: document.getElementById('workspace'),
 	logoutButton: document.getElementById('logoutButton'),
+	newFolderButton: document.getElementById('newFolderButton'),
+	deleteFolderButton: document.getElementById('deleteFolderButton'),
 	folderList: document.getElementById('folderList'),
 	folderCount: document.getElementById('folderCount'),
+	newNoteButton: document.getElementById('newNoteButton'),
+	deleteNoteButton: document.getElementById('deleteNoteButton'),
 	noteList: document.getElementById('noteList'),
 	noteCount: document.getElementById('noteCount'),
 	noteDetail: document.getElementById('noteDetail'),
@@ -19,10 +23,15 @@ const elements = {
 
 const joplinPublicBasePath = document.body.dataset.joplinBasePath || '/joplin';
 
-const requestJson = async url => {
+const requestJson = async (url, options = {}) => {
 	const response = await fetch(url, {
 		credentials: 'same-origin',
-		headers: { Accept: 'application/json' },
+		headers: {
+			Accept: 'application/json',
+			...(options.body ? { 'Content-Type': 'application/json' } : {}),
+			...(options.headers || {}),
+		},
+		...options,
 	});
 
 	const isJson = (response.headers.get('content-type') || '').includes('application/json');
@@ -51,12 +60,16 @@ const renderSession = () => {
 		elements.logoutButton.hidden = true;
 		elements.logoutButton.disabled = false;
 		elements.logoutButton.textContent = 'Logout';
+		elements.deleteFolderButton.hidden = true;
+		elements.deleteNoteButton.hidden = true;
 		return;
 	}
 
 	elements.sessionStatus.textContent = `Signed in as ${state.user.fullName || state.user.email}`;
 	elements.workspace.hidden = false;
 	elements.logoutButton.hidden = false;
+	elements.deleteFolderButton.hidden = !state.selectedFolderId;
+	elements.deleteNoteButton.hidden = !state.selectedNoteId;
 };
 
 const resetState = () => {
@@ -75,10 +88,14 @@ const renderFolders = () => {
 	if (!state.folders.length) {
 		elements.folderList.innerHTML = '<div class="empty-state">No folders yet.</div>';
 		state.notes = [];
+		state.selectedFolderId = '';
 		state.selectedNoteId = '';
+		elements.deleteFolderButton.hidden = true;
 		renderNotes();
 		return;
 	}
+
+	elements.deleteFolderButton.hidden = !state.selectedFolderId;
 
 	elements.folderList.innerHTML = state.folders.map(folder => {
 		const active = folder.id === state.selectedFolderId ? ' active' : '';
@@ -103,8 +120,12 @@ const renderNotes = () => {
 	if (!state.notes.length) {
 		elements.noteList.innerHTML = '<div class="empty-state">No notes in this folder.</div>';
 		elements.noteDetail.innerHTML = '<div class="note-detail-empty">Select a note to view its content.</div>';
+		state.selectedNoteId = '';
+		elements.deleteNoteButton.hidden = true;
 		return;
 	}
+
+	elements.deleteNoteButton.hidden = !state.selectedNoteId;
 
 	elements.noteList.innerHTML = state.notes.map(note => {
 		const active = note.id === state.selectedNoteId ? ' active' : '';
@@ -165,6 +186,65 @@ const loadFolders = async () => {
 	await loadNotes();
 };
 
+const createFolder = async () => {
+	const title = window.prompt('Folder name');
+	if (title === null) return;
+	const trimmedTitle = title.trim();
+	if (!trimmedTitle) return;
+
+	await requestJson('/api/web/folders', {
+		method: 'POST',
+		body: JSON.stringify({ title: trimmedTitle }),
+	});
+	await loadFolders();
+};
+
+const deleteFolder = async () => {
+	if (!state.selectedFolderId) return;
+	if (!window.confirm('Delete this folder?')) return;
+
+	await requestJson(`/api/web/folders/${encodeURIComponent(state.selectedFolderId)}`, {
+		method: 'DELETE',
+	});
+	state.selectedFolderId = '';
+	state.selectedNoteId = '';
+	await loadFolders();
+};
+
+const createNote = async () => {
+	if (!state.selectedFolderId) {
+		elements.sessionStatus.textContent = 'Select a folder before creating a note.';
+		return;
+	}
+
+	const title = window.prompt('Note title', 'Untitled note');
+	if (title === null) return;
+
+	const payload = await requestJson('/api/web/notes', {
+		method: 'POST',
+		body: JSON.stringify({
+			title: title.trim() || 'Untitled note',
+			body: '',
+			parentId: state.selectedFolderId,
+		}),
+	});
+
+	state.selectedNoteId = payload.item?.id || '';
+	await loadNotes();
+};
+
+const deleteNote = async () => {
+	if (!state.selectedNoteId) return;
+	if (!window.confirm('Delete this note?')) return;
+
+	const deletingId = state.selectedNoteId;
+	state.selectedNoteId = '';
+	await requestJson(`/api/web/notes/${encodeURIComponent(deletingId)}`, {
+		method: 'DELETE',
+	});
+	await loadNotes();
+};
+
 const bootstrap = async () => {
 	try {
 		const payload = await requestJson('/api/web/me');
@@ -205,8 +285,34 @@ const logout = async () => {
 	}
 };
 
-elements.logoutButton.addEventListener('click', () => {
-	void logout();
-});
+if (elements.logoutButton) {
+	elements.logoutButton.addEventListener('click', () => {
+		void logout();
+	});
+}
+
+if (elements.newFolderButton) {
+	elements.newFolderButton.addEventListener('click', () => {
+		void createFolder();
+	});
+}
+
+if (elements.deleteFolderButton) {
+	elements.deleteFolderButton.addEventListener('click', () => {
+		void deleteFolder();
+	});
+}
+
+if (elements.newNoteButton) {
+	elements.newNoteButton.addEventListener('click', () => {
+		void createNote();
+	});
+}
+
+if (elements.deleteNoteButton) {
+	elements.deleteNoteButton.addEventListener('click', () => {
+		void deleteNote();
+	});
+}
 
 void bootstrap();

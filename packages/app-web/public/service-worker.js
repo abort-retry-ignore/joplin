@@ -1,5 +1,5 @@
-const CACHE_NAME = 'joplock-shell-v1';
-const PRECACHE_URLS = ['/', '/styles.css', '/manifest.webmanifest', '/icon.svg'];
+const CACHE_NAME = 'joplock-shell-v2';
+const PRECACHE_URLS = ['/app.js', '/styles.css', '/manifest.webmanifest', '/icon.svg'];
 
 self.addEventListener('install', event => {
 	event.waitUntil(
@@ -23,9 +23,15 @@ self.addEventListener('activate', event => {
 
 self.addEventListener('fetch', event => {
 	if (event.request.method !== 'GET') return;
+	const url = new URL(event.request.url);
+	if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/joplin/')) return;
 
 	event.respondWith(
 		(async () => {
+			if (event.request.mode === 'navigate' || url.pathname === '/') {
+				return fetch(event.request);
+			}
+
 			const cached = await caches.match(event.request);
 			if (cached) return cached;
 			return fetch(event.request);

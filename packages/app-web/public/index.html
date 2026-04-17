@@ -53,15 +53,27 @@
 			<section class="workspace app-section" id="workspace" hidden>
 				<aside class="panel sidebar-panel">
 					<div class="section-header">
-						<h2>Folders</h2>
-						<div class="section-meta" id="folderCount">0</div>
+						<div class="section-heading">
+							<h2>Folders</h2>
+							<div class="section-meta" id="folderCount">0</div>
+						</div>
+						<div class="section-actions">
+							<button class="button secondary section-button" id="newFolderButton" type="button">New folder</button>
+							<button class="button secondary section-button" id="deleteFolderButton" type="button" hidden>Delete</button>
+						</div>
 					</div>
 					<div class="list-stack" id="folderList"></div>
 				</aside>
 				<section class="panel notes-panel">
 					<div class="section-header">
-						<h2>Notes</h2>
-						<div class="section-meta" id="noteCount">0</div>
+						<div class="section-heading">
+							<h2>Notes</h2>
+							<div class="section-meta" id="noteCount">0</div>
+						</div>
+						<div class="section-actions">
+							<button class="button secondary section-button" id="newNoteButton" type="button">New note</button>
+							<button class="button secondary section-button" id="deleteNoteButton" type="button" hidden>Delete</button>
+						</div>
 					</div>
 					<div class="two-pane">
 						<div class="list-stack note-list" id="noteList"></div>

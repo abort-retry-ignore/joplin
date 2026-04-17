@@ -49,6 +49,19 @@ const createItemService = database => {
 			return result.rows.map(mapFolderRow);
 		},
 
+		async folderByUserIdAndJopId(userId, folderId) {
+			const result = await database.query(`
+				SELECT id, jop_id, jop_parent_id, jop_updated_time, created_time, content
+				FROM items
+				WHERE owner_id = $1 AND jop_type = $2 AND jop_id = $3
+				LIMIT 1
+			`, [userId, MODEL_TYPE_FOLDER, folderId]);
+
+			const row = result.rows[0];
+			if (!row) return null;
+			return mapFolderRow(row);
+		},
+
 		async notesByUserId(userId, options = {}) {
 			const folderId = options.folderId || '';
 			const params = [userId, MODEL_TYPE_NOTE];
