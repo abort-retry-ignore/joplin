@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+		<meta name="theme-color" content="#08110b" />
+		<link rel="manifest" href="/manifest.webmanifest" />
+		<link rel="icon" href="/icon.svg" type="image/svg+xml" />
+		<link rel="stylesheet" href="/styles.css" />
+		<title>Joplock</title>
+	</head>
+	<body>
+		<div class="background"></div>
+		<main class="shell">
+			<section class="hero-card">
+				<div class="eyebrow">Thin Client Preview</div>
+				<h1>Joplock PWA shell</h1>
+				<p class="lead">
+					Distinct web client for Joplin Server. Same auth. Same backend. Minimal browser storage.
+				</p>
+				<div class="actions">
+					<a class="button primary" href="__JOPLIN_SERVER_BASE_URL__/login">Login to Joplin Server</a>
+					<a class="button secondary" href="__JOPLIN_SERVER_BASE_URL__">Open Server Home</a>
+				</div>
+			</section>
+
+			<section class="grid">
+				<article class="panel">
+					<h2>Current state</h2>
+					<ul>
+						<li>PWA shell only</li>
+						<li>Online-only design</li>
+						<li>Server-authoritative model</li>
+						<li>Same-origin integration target</li>
+					</ul>
+				</article>
+				<article class="panel">
+					<h2>Next milestones</h2>
+					<ul>
+						<li>Authenticate through Joplin Server session</li>
+						<li>Add `/api/web/*` endpoints</li>
+						<li>Render folders and note list</li>
+						<li>Serve built assets from `packages/server`</li>
+					</ul>
+				</article>
+			</section>
+		</main>
+		<script>
+			if ('serviceWorker' in navigator) {
+				navigator.serviceWorker.register('/service-worker.js').catch(function() {
+					// Ignore registration failures in the skeleton.
+				});
+			}
+		</script>
+	</body>
+</html>

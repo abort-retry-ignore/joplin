@@ -1,0 +1,10 @@
+{
+	"name": "@joplin/app-web",
+	"private": true,
+	"version": "0.1.0",
+	"description": "Thin-client web frontend skeleton for Joplin Server",
+	"main": "server.js",
+	"scripts": {
+		"start": "node server.js"
+	}
+}

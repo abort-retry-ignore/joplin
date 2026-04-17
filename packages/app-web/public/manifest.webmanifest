@@ -1,0 +1,17 @@
+{
+	"name": "Joplock",
+	"short_name": "Joplock",
+	"start_url": "/",
+	"display": "standalone",
+	"background_color": "#08110b",
+	"theme_color": "#08110b",
+	"description": "Thin-client web frontend skeleton for Joplin Server.",
+	"icons": [
+		{
+			"src": "/icon.svg",
+			"sizes": "any",
+			"type": "image/svg+xml",
+			"purpose": "any"
+		}
+	]
+}

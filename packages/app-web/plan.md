@@ -2,17 +2,17 @@
 
 ## Goal
 
-Build `packages/app-web` as thin-client web frontend for Joplin Server.
+Build `packages/app-web` as thin-client web frontend and companion API for stock Joplin Server.
 
 Requirements:
-- same backend as existing Joplin Server
+- do not modify Joplin Server source
 - same auth/session as Joplin Server
 - same user data visible across web, desktop, mobile, CLI
 - minimal browser storage
 - no offline note cache
 - PWA shell support
 - thin client UI distinct from other Joplin clients
-- no dependency on `app-mobile` or old browser-local vault work
+- keep compatibility with normal Joplin sync clients
 
 ## Non-Goals
 
@@ -22,120 +22,306 @@ Requirements:
 - no need to reuse React Native web code
 - no separate vault encryption model
 - no custom auth separate from Joplin Server auth
+- no direct browser use of Joplin sync API for normal UI flows
 
 ## Product Model
 
-- one Joplin Server instance
+- one stock Joplin Server instance
+- one sidecar `app-web` service owned by this project
 - one user logs in with normal Joplin Server account
-- one user can open web thin client in multiple browsers and see same server-backed data
+- one user can open thin client in multiple browsers and see same server-backed data
 - desktop/mobile/CLI keep syncing against same server as before
-- thin client talks to same server through app-specific API endpoints
+- thin client talks to sidecar app-oriented API endpoints
 
-## Package Split
+## Service Split
 
-### `packages/server`
+### Stock `joplin-server`
 
-Owns backend responsibilities:
-- auth/session reuse
-- app-facing thin-client API
-- sync compatibility for other Joplin clients
-- resource delivery
-- server-side search/list behavior
-- static hosting for built `app-web` assets
+Owns:
+- login/session/auth
+- sync endpoints
+- canonical server data storage rules
+- existing user/session schema
+- normal Joplin compatibility contract
 
 ### `packages/app-web`
 
-Owns frontend responsibilities:
-- thin-client SPA/PWA shell
-- note list, folder tree, editor, search, settings UI
-- same-origin API client for `packages/server`
-- no browser-local source of truth
+Owns:
+- thin-client frontend
+- PWA shell
+- sidecar API service
+- session validation against Joplin Server tables
+- app-oriented view models for notes/folders/search/resources
 
 ## Architecture Decision
 
-### Backend
-
-Use `packages/server` as base.
+### Why Sidecar Instead Of Modifying Server
 
 Reasons:
-- already has users, sessions, MFA, sharing, storage, sync API
-- already supports PostgreSQL
-- already owns canonical server state for all clients
-- easier to import upstream Joplin Server changes later
+- keeps upstream Joplin Server easy to pull in
+- reduces merge pain
+- lets thin client evolve independently
+- preserves clear separation between stock server and custom web UI/API
 
-### Frontend
+### Sidecar API Model
 
-Build new dedicated web app in `packages/app-web`.
+Frontend calls only `app-web` API, for example `/api/web/*`.
 
-Characteristics:
-- same-origin app served by server
-- cookie/session auth via server
-- online-only thin client
-- no local DB
-- no OPFS authority
-- no browser sync engine
+Sidecar API:
+- validates Joplin Server session cookie
+- reads same Postgres database
+- translates Joplin Server storage model into thin-client API responses
+- writes data in a way that preserves sync compatibility
 
-### Data Strategy
+### Important Constraint
+
+`app-web` must not write arbitrary DB rows directly without respecting Joplin semantics.
+
+Write paths must preserve:
+- item serialization format
+- timestamps
+- change tracking
+- resource relations
+- sync behavior expected by other Joplin clients
+
+## Data Strategy
 
 Keep existing sync/item storage compatibility for external Joplin clients.
 
-Add app-facing server API for thin client.
+Sidecar API should:
+1. start by reading current Joplin Server item/session tables and models where possible
+2. hide those internals behind app-specific API contracts
+3. optionally add projection/index tables later for performance
 
-Possible read model:
-1. Start by reading existing server item model directly
-2. Add projection/index tables later if note list/search performance needs it
+Frontend must never depend on raw table/schema shape.
 
-## Milestones
+## Routing Model
 
-### Milestone 0: Foundation Decisions
+Recommended runtime shape:
+- `http://localhost:22300` -> stock Joplin Server
+- `http://localhost:3001` -> `app-web` sidecar during early development
+- later optional reverse proxy:
+  - `/login`, `/api/items`, sync routes -> Joplin Server
+  - `/app`, `/api/web/*` -> app-web
 
-- confirm `packages/server` + `packages/app-web` split
-- confirm PostgreSQL for primary deployment
+## Step-by-Step Implementation Plan
+
+### Phase 0: Freeze Architecture
+
+Tasks:
+- confirm sidecar model
+- confirm no Joplin Server source modifications
 - confirm online-only PWA
-- confirm thin client scope: notes, folders, search, resources, basic settings/themes
-- confirm frontend stack inside `packages/app-web`
+- confirm Postgres primary target
+- confirm sidecar reads Joplin session tables for auth
 
 Deliverables:
-- architecture doc
-- API surface doc
-- route/module layout for server and app-web
+- final architecture note
+- compose topology
+- API boundary rules
 
-### Milestone 1: `app-web` Scaffold
+### Phase 1: Sidecar Skeleton
 
-Create `packages/app-web` as dedicated thin-client frontend package.
+Goal:
+- make `packages/app-web` a real package with separate frontend shell and sidecar runtime
 
 Tasks:
-- choose frontend build stack
-- add package manifest and workspace wiring
-- add minimal build pipeline
-- add app shell, routing, theming foundation
-- add PWA manifest/service worker for shell/assets only
+- keep minimal frontend shell
+- add sidecar server entrypoint structure
+- define environment variables:
+  - Joplin Server base URL
+  - Postgres connection settings
+  - session cookie name
+  - app-web port
+- keep Dockerfile and compose working
 
 Deliverables:
-- `packages/app-web` builds
-- server can later serve built app assets
-- installable shell exists without app data features yet
+- app-web container boots
+- app-web health endpoint works
+- PWA shell still served
 
-### Milestone 2: Server Web App Hosting
+Tests:
+- unit test config parsing
+- unit test health endpoint
+- compose config validation in CI or local script
 
-Add authenticated web app entrypoint to `packages/server`.
+### Phase 2: Session Reuse
+
+Goal:
+- sidecar can authenticate user using existing Joplin Server session cookie
 
 Tasks:
-- add `/app` route behind existing auth/session
-- reuse existing login flow and session cookie
-- serve built `packages/app-web` output
-- redirect unauthenticated users to existing login
+- inspect session cookie name/lookup rules from Joplin Server
+- add sidecar auth middleware
+- load session from same DB tables used by Joplin Server
+- load current user from same DB tables
+- return unauthorized when session missing/invalid
+
+Initial endpoint:
+- `GET /api/web/me`
 
 Deliverables:
-- logged-in web shell loads from server
-- unauthenticated users redirected to existing login
-- app-web and server integrated same-origin
+- browser logged into Joplin Server can call app-web API successfully
+- unauthenticated browser gets `401`
 
-### Milestone 3: Thin Client API
+Tests:
+- unit test session extraction from cookie header
+- unit test session lookup service
+- integration test `GET /api/web/me` with valid session fixture
+- integration test `GET /api/web/me` with invalid session
 
-Add app-oriented endpoints under new namespace, for example `/api/web`.
+### Phase 3: Read-Only Note Browsing
 
-Initial endpoints:
+Goal:
+- show real user data without editing yet
+
+Tasks:
+- implement folder query service
+- implement note list query service
+- implement note detail read service
+- map current server storage model to app-web response shape
+
+Endpoints:
+- `GET /api/web/folders`
+- `GET /api/web/notes?folderId=&page=&limit=`
+- `GET /api/web/notes/:id`
+
+Frontend tasks:
+- folder sidebar
+- note list
+- note viewer
+- loading/error states
+
+Deliverables:
+- authenticated user can browse folders and notes
+
+Tests:
+- unit tests for folder tree mapping
+- unit tests for note summary mapping
+- integration tests for folder/note endpoints
+- frontend component tests for sidebar and note list rendering
+
+### Phase 4: Note Editing
+
+Goal:
+- create and update notes safely through sidecar API
+
+Tasks:
+- implement note create service
+- implement note update service
+- implement note delete service
+- ensure writes preserve Joplin-compatible serialization and timestamps
+- ensure data remains visible and consistent to desktop/mobile after sync
+
+Endpoints:
+- `POST /api/web/notes`
+- `PUT /api/web/notes/:id`
+- `DELETE /api/web/notes/:id`
+
+Deliverables:
+- thin client can create, edit, and delete notes
+- desktop/mobile clients still see correct results after sync
+
+Tests:
+- unit tests for note payload validation
+- unit tests for serialization/mapping layer
+- integration tests for note CRUD API
+- cross-client compatibility smoke test plan: create note via app-web, verify via server-side item read
+
+### Phase 5: Search
+
+Goal:
+- server-side search results for thin client
+
+Tasks:
+- implement search endpoint using current storage model first
+- shape results for note list UI
+- add pagination and ordering
+
+Endpoints:
+- `GET /api/web/search?q=&page=&limit=`
+
+Deliverables:
+- search UI returns usable results quickly
+
+Tests:
+- unit tests for query normalization
+- integration tests for search endpoint
+- frontend tests for search result rendering
+
+### Phase 6: Resources
+
+Goal:
+- attachments and inline images work without local authoritative storage
+
+Tasks:
+- resource metadata endpoint
+- resource content endpoint
+- inline image rendering path
+- attachment open/download
+- optional upload path for note editing later
+
+Endpoints:
+- `GET /api/web/resources/:id/meta`
+- `GET /api/web/resources/:id/content`
+- later `POST /api/web/resources`
+
+Deliverables:
+- inline images display
+- attachments open/download from same-origin sidecar
+
+Tests:
+- integration tests for resource metadata/content endpoints
+- frontend tests for image/attachment rendering components
+
+### Phase 7: Sync Status
+
+Goal:
+- show sync status and trigger sync-aware refresh flows without using sync API directly in browser
+
+Tasks:
+- add status endpoint backed by observable server state if possible
+- add trigger endpoint if safe and practical
+- otherwise surface read-only sync status first
+
+Endpoints:
+- `GET /api/web/sync/status`
+- optional `POST /api/web/sync`
+
+Tests:
+- unit tests for sync status mapping
+- integration tests for status endpoint
+
+### Phase 8: PWA and Polish
+
+Goal:
+- make shell installable and pleasant, but keep online-only model
+
+Tasks:
+- refine manifest
+- refine service worker to cache shell/assets only
+- add reconnect screen
+- theme/settings basics
+- keep UI distinct from stock clients
+
+Tests:
+- frontend tests for offline/reconnect screen behavior
+- smoke test service worker registration
+
+### Phase 9: Hardening
+
+Tasks:
+- auth/session security review
+- large notebook performance profiling
+- pagination and query tuning
+- optional projection/index layer if needed
+- end-to-end test pass for core flows
+
+## API Contract Guidance
+
+Frontend uses only sidecar API.
+
+Recommended first contract:
 - `GET /api/web/me`
 - `GET /api/web/folders`
 - `GET /api/web/notes`
@@ -144,143 +330,83 @@ Initial endpoints:
 - `PUT /api/web/notes/:id`
 - `DELETE /api/web/notes/:id`
 - `GET /api/web/search`
+- `GET /api/web/resources/:id/meta`
+- `GET /api/web/resources/:id/content`
 - `GET /api/web/sync/status`
-- `POST /api/web/sync`
 
-Requirements:
-- same auth/session as server
-- no raw SQL over network
-- responses shaped for thin client UI, not sync protocol
+## Testing Strategy
 
-### Milestone 4: Core UI Vertical Slice
+### Unit Tests
 
-Build minimal useful web app in `packages/app-web`:
-- folder sidebar
-- note list
-- note viewer/editor
-- create note
-- rename/delete note
-- basic markdown editing
-- save feedback/state
+Test pure logic in isolation:
+- config/env parsing
+- cookie/session parsing
+- auth helpers
+- API request validation
+- data mapping from server storage model to app-web view model
+- folder tree building
+- note summary shaping
 
-Requirements:
-- server-authoritative state
-- browser memory limited to current session UI state
-- no full notebook cache persisted locally
+### Integration Tests
 
-### Milestone 5: Search and Fast Lists
+Test sidecar API against test database fixtures:
+- auth/session validation
+- `GET /api/web/me`
+- folders list
+- notes list/detail
+- note CRUD
+- search
+- resource fetch
 
-Implement server-side search/list optimization.
+### Frontend Component Tests
 
-Start with direct item model reads.
-
-If needed, add projection layer:
-- note summaries
-- folder hierarchy cache
-- normalized note-tag mapping
-- search index support
-
-Deliverables:
-- fast note list
-- fast search results
-- stable pagination
-
-### Milestone 6: Resources
-
-Add thin-client resource handling.
-
-Tasks:
-- server resource metadata endpoint
-- same-origin resource content endpoint
-- inline image rendering
-- attachment open/download
-- attachment upload for note editing
-
-Requirements:
-- no browser-local authoritative resource store
-- optional short-lived memory/object URL cache only
-
-### Milestone 7: Sync Integration
-
-Expose sync state cleanly to web app.
-
-Tasks:
-- show last sync
-- trigger sync
-- show active sync progress/errors
-
-Longer-term options:
-- server push updates via SSE/WebSocket
-- passive refresh first, real-time later
-
-### Milestone 8: Settings and Themes
-
-Support thin-client-specific settings without trying to mirror every client feature.
-
-Initial scope:
-- theme selection
-- editor layout preferences
-- note list density / sort where practical
-
-Keep scope narrow.
-
-### Milestone 9: Hardening
-
-Tasks:
-- tests for web API routes
-- tests for auth/session behavior
-- tests for note CRUD
-- tests for search and resource fetch
-- frontend tests for core UI flows
-- performance profiling on large notebooks
-- security review for cache/storage/session behavior
-
-## Server Module Plan
-
-Likely new areas under `packages/server/src/`:
-- `routes/webapp/`
-- `routes/api/web/`
-- `services/webapp/`
-- `models/webapp/` or projection helpers if needed
-- built frontend output serving path
-
-## Frontend Module Plan
-
-Thin client should be visually distinct from desktop/mobile clients.
-
-Likely areas under `packages/app-web/`:
-- app shell
-- API client
-- auth/session bootstrap
-- sidebar
-- note list
-- note editor/viewer
+Test UI in isolation:
+- shell routing states
+- auth-required screen
+- sidebar rendering
+- note list rendering
+- note editor/viewer interactions
 - search UI
-- settings/theme UI
-- PWA assets and service worker
 
-Keep UI independent from React Native web code.
+### End-to-End / Smoke Tests
+
+Keep minimal but meaningful:
+- login to Joplin Server
+- app-web sees valid session
+- browse notes
+- edit note
+- reload and confirm persistence
+
+## Rules For Safe Writes
+
+Must not do:
+- arbitrary direct updates to raw DB tables from frontend
+- bypassing Joplin item semantics for note/resource writes
+- coupling browser to sync item schema
+
+Prefer:
+- sidecar service layer for all writes
+- reuse shared Joplin code where practical for serialization and validation
+- keep thin compatibility layer around DB/session internals
 
 ## Open Questions
 
-- frontend stack inside `packages/app-web`: React + Vite, Next, or lean SPA build?
-- how should built `app-web` assets be wired into `packages/server` runtime?
-- how much of note rendering/editor can reuse `@joplin/renderer` and `@joplin/editor` cleanly in thin client?
-- when to add projection/index layer versus direct reads from current server models?
+- should sidecar API be in same `packages/app-web` package or split into separate `packages/app-web-api` later?
+- what exact Joplin Server session table/schema contract should be treated as supported dependency?
+- how much shared Joplin code can be reused without pulling in wrong client assumptions?
+- when to add projection/index layer versus direct reads from current server data?
 
 ## Recommended Next Step
 
-Prototype Milestone 1 + Milestone 2 + first slice of Milestone 3:
-- scaffold `packages/app-web`
-- add server-authenticated `/app`
-- `GET /api/web/me`
-- `GET /api/web/folders`
-- `GET /api/web/notes`
-- simple note list UI
+Implement Phase 2 first.
+
+Concrete next slice:
+- add sidecar auth middleware
+- add `GET /api/web/me`
+- add unit tests for session parsing/lookup
+- add integration test for authenticated request
 
 Reason:
-- proves package split
-- proves auth reuse
-- proves thin-client API shape
-- proves same-user same-data model
-- keeps work anchored in `packages/server` while letting UI stay distinct in `packages/app-web`
+- proves no-server-modification model
+- proves session reuse
+- proves sidecar viability before building note UI

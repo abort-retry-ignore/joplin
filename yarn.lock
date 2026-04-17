@@ -12908,6 +12908,12 @@ __metadata:
   languageName: unknown
   linkType: soft
 
+"@joplin/app-web@workspace:packages/app-web":
+  version: 0.0.0-use.local
+  resolution: "@joplin/app-web@workspace:packages/app-web"
+  languageName: unknown
+  linkType: soft
+
 "@joplin/default-plugins@npm:~3.6, @joplin/default-plugins@workspace:packages/default-plugins":
   version: 0.0.0-use.local
   resolution: "@joplin/default-plugins@workspace:packages/default-plugins"
