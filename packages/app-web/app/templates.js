@@ -38,7 +38,7 @@ const noteListItem = (note, selectedNoteId) => {
 		hx-target="#editor-panel"
 		hx-swap="innerHTML"
 		hx-on::after-request="document.querySelectorAll('.notelist-item').forEach(b=>b.classList.remove('active'));this.classList.add('active')">
-		<span class="notelist-item-title">${escapeHtml(note.title || 'Untitled')}</span>
+		<span class="notelist-item-title">${renderInlineMarkdown(escapeHtml(note.title || 'Untitled'))}</span>
 	</button>`;
 };
 
@@ -84,11 +84,13 @@ const editorFragment = (note, folders) => {
 		<div class="editor-titlebar">
 			<select name="parentId" class="editor-folder-select" title="Move to folder">${folderOptions}</select>
 			<span class="editor-folder-arrow">&#9656;</span>
-			<input type="text" name="title" class="editor-title"
-				value="${escapeHtml(note.title || '')}" placeholder="Note title" />
+			<input type="hidden" name="title" class="editor-title-hidden"
+				value="${escapeHtml(note.title || '')}" />
+			<div class="editor-title" contenteditable="true"
+				data-placeholder="Note title">${renderInlineMarkdown(escapeHtml(note.title || ''))}</div>
 			<span id="autosave-status"></span>
 			<span id="autosave-indicator" class="htmx-indicator">Saving...</span>
-			<button type="button" class="btn btn-icon" title="Preview" id="preview-toggle" onclick="togglePreview()">&#128065;</button>
+			<button type="button" class="btn btn-icon" title="Edit" id="preview-toggle" onclick="togglePreview()">&#9998;</button>
 			<button type="button" class="btn btn-icon btn-danger" title="Delete"
 				hx-delete="/fragments/notes/${encodeURIComponent(note.id)}"
 				hx-target="#notelist-panel"
@@ -121,17 +123,37 @@ const editorFragment = (note, folders) => {
 		</div>
 		<textarea name="body" class="editor-body" id="note-body"
 			placeholder="Start writing..."
-			ondrop="handleDrop(event)" ondragover="event.preventDefault()">${escapeHtml(note.body || '')}</textarea>
-		<div class="editor-preview" id="note-preview" style="display:none"></div>
+			ondrop="handleDrop(event)" ondragover="event.preventDefault()" style="display:none">${escapeHtml(note.body || '')}</textarea>
+		<div class="editor-preview" id="note-preview" contenteditable="true">${renderMarkdown(note.body || '')}</div>
 	</form>`;
 };
 
 const autosaveStatusFragment = () => '<span class="autosave-ok">Saved</span>';
 
+// Render only inline markdown (bold, italic, strikethrough, inline code) — no block elements
+const renderInlineMarkdown = (text) => {
+	if (!text) return '';
+	let html = text;
+	html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+	html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
+	html = html.replace(/~~(.+?)~~/g, '<del>$1</del>');
+	html = html.replace(/`(.+?)`/g, '<code>$1</code>');
+	return html;
+};
+
 // Simple markdown to HTML renderer (handles common Joplin markdown)
 const renderMarkdown = (markdown) => {
 	if (!markdown) return '';
 	let html = escapeHtml(markdown);
+
+	// Passthrough inline <img> HTML tags (restore escaped versions)
+	// Handles: <img src=":/id" ...> and <img src="url" ...>
+	html = html.replace(/&lt;img\s([\s\S]*?)\/&gt;/g, (_m, attrs) => {
+		const restored = attrs.replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#39;/g, '\'');
+		const srcMatch = restored.match(/src=":\/([\w]{32})"/);
+		const fixedAttrs = srcMatch ? restored.replace(/src=":\/([\w]{32})"/, `src="/resources/${srcMatch[1]}"`) : restored;
+		return `<img ${fixedAttrs} class="preview-img" />`;
+	});
 
 	// Code blocks (``` ... ```) — must be before inline rules
 	html = html.replace(/```(\w*)\n([\s\S]*?)```/g, (_m, _lang, code) => `<pre><code>${code}</code></pre>`);
@@ -175,16 +197,32 @@ const renderMarkdown = (markdown) => {
 	html = html.replace(/^[-*]\s+(.+)$/gm, '<li>$1</li>');
 	// Wrap consecutive <li> in <ul>
 	html = html.replace(/((?:<li>.*<\/li>\n?)+)/g, '<ul>$1</ul>');
+	// Ensure block elements have double-newline spacing around them
+	html = html.replace(/(<\/(?:ul|ol|pre|blockquote|h[1-6])>)\n?/g, '$1\n\n');
+	html = html.replace(/\n?(<(?:ul|ol|pre|blockquote|h[1-6])[> ])/g, '\n\n$1');
 
 	// Blockquote
 	html = html.replace(/^&gt;\s+(.+)$/gm, '<blockquote>$1</blockquote>');
 
-	// Paragraphs: double newline
-	html = html.replace(/\n\n+/g, '</p><p>');
-	// Single newline to <br> (but not inside pre/block elements)
-	html = html.replace(/\n/g, '<br>');
+	// Preserve extra blank lines (3+ newlines) as explicit markers before paragraph splitting
+	html = html.replace(/\n{3,}/g, match => {
+		const extraBlanks = match.length - 2; // beyond the normal paragraph break
+		return `\n\n${Array.from({ length: extraBlanks }, () => '<div class="md-blank-line">\u00a0</div>').join('')}\n\n`;
+	});
 
-	return `<p>${html}</p>`;
+	// Paragraphs: double newline → paragraph break
+	const blocks = html.split('\n\n');
+	const blockRe = /^<(?:h[1-6]|pre|ul|ol|blockquote|hr|div)/;
+	const out = [];
+	for (let i = 0; i < blocks.length; i++) {
+		const trimmed = blocks[i].trim();
+		if (!trimmed) continue;
+		if (blockRe.test(trimmed)) { out.push(trimmed); continue; }
+		out.push(`<p>${trimmed.replace(/\n/g, '<br>')}</p>`);
+	}
+	html = out.join('');
+
+	return html;
 };
 
 const searchResultsFragment = (notes) => {
@@ -194,7 +232,7 @@ const searchResultsFragment = (notes) => {
 
 // Full page
 const layoutPage = (options = {}) => {
-	const { user, sidebarContent, notelistContent, joplinBasePath } = options;
+	const { user, sidebarContent, notelistContent, loginError } = options;
 	const loggedIn = !!user;
 
 	if (!loggedIn) {
@@ -213,10 +251,15 @@ const layoutPage = (options = {}) => {
 		<div class="login-card">
 			<h1 class="login-title">Joplock</h1>
 			<p class="login-sub">Web client for Joplin Server</p>
-			<div class="login-actions">
-				<a class="btn btn-primary" href="${escapeHtml(joplinBasePath)}/login">Login</a>
-				<a class="btn btn-secondary" href="${escapeHtml(joplinBasePath)}">Server Home</a>
-			</div>
+			<form class="login-form" method="POST" action="/login">
+				<input type="email" name="email" placeholder="Email" class="login-input" required autofocus />
+				<div class="login-password-wrap">
+					<input type="password" name="password" id="login-password" placeholder="Password" class="login-input" required />
+					<button type="button" class="login-eye" onclick="var p=document.getElementById('login-password');if(p.type==='password'){p.type='text';this.innerHTML='&#128065;'}else{p.type='password';this.innerHTML='&#128064;'}" title="Show/hide password">&#128064;</button>
+				</div>
+				<div class="login-error" id="login-error">${loginError ? escapeHtml(loginError) : ''}</div>
+				<button type="submit" class="btn btn-primary login-btn">Login</button>
+			</form>
 		</div>
 	</div>
 </body>
@@ -238,6 +281,7 @@ const layoutPage = (options = {}) => {
 	<div class="app">
 		<div class="col-sidebar" id="sidebar-panel">
 			<div class="col-header">
+				<button class="btn-icon-sm sidebar-collapse-btn" title="Toggle notebooks" onclick="var sb=document.getElementById('sidebar-panel');sb.classList.toggle('collapsed');localStorage.setItem('sidebar-collapsed',sb.classList.contains('collapsed')?'1':'')">&#9776;</button>
 				<span class="col-label">NOTEBOOKS</span>
 				<button class="btn-icon-sm" title="New notebook"
 					onclick="event.preventDefault();var t=prompt('Notebook name');if(t&&t.trim()){htmx.ajax('POST','/fragments/folders',{target:'#folder-list',swap:'innerHTML',values:{title:t.trim()}})}">+</button>
@@ -269,16 +313,34 @@ const layoutPage = (options = {}) => {
 	if('serviceWorker' in navigator) navigator.serviceWorker.register('/service-worker.js').catch(function(){});
 	function setTheme(t){document.body.className='theme-'+t;localStorage.setItem('joplock-theme',t)}
 	(function(){var s=localStorage.getItem('joplock-theme');if(s){document.body.className='theme-'+s;var e=document.querySelector('.theme-picker');if(e)e.value=s}})();
+	(function(){if(localStorage.getItem('sidebar-collapsed')){var sb=document.getElementById('sidebar-panel');if(sb)sb.classList.add('collapsed')}})();
 	function getTA(){return document.getElementById('note-body')}
-	function wrapSel(a,b){var t=getTA();if(!t)return;var s=t.selectionStart,e=t.selectionEnd,v=t.value,sel=v.substring(s,e)||'text';t.value=v.substring(0,s)+a+sel+b+v.substring(e);t.selectionStart=s+a.length;t.selectionEnd=s+a.length+sel.length;t.focus();t.dispatchEvent(new Event('input',{bubbles:true}))}
-	function insertPfx(p){var t=getTA();if(!t)return;var s=t.selectionStart,ls=t.value.lastIndexOf('\\n',s-1)+1;t.value=t.value.substring(0,ls)+p+t.value.substring(ls);t.selectionStart=t.selectionEnd=s+p.length;t.focus();t.dispatchEvent(new Event('input',{bubbles:true}))}
-	function insertTxt(x){var t=getTA();if(!t)return;var s=t.selectionStart;t.value=t.value.substring(0,s)+x+t.value.substring(t.selectionEnd);t.selectionStart=t.selectionEnd=s+x.length;t.focus();t.dispatchEvent(new Event('input',{bubbles:true}))}
-	function insertLink(){var u=prompt('URL:');if(u)wrapSel('[',']('+u+')')}
-	function insertImg(){var u=prompt('Image URL:');if(u)insertTxt('![image]('+u+')')}
+	function getPV(){var pv=document.getElementById('note-preview');return pv&&pv.style.display!=='none'?pv:null}
+	var _pvSyncTimer=null;
+	function syncPV(){var pv=getPV(),ta=getTA();if(pv&&ta){ta.value=htmlToMarkdown(pv);ta.dispatchEvent(new Event('input',{bubbles:true}))}}
+	function scheduleSyncPV(){if(_pvSyncTimer)clearTimeout(_pvSyncTimer);_pvSyncTimer=setTimeout(function(){_pvSyncTimer=null;syncPV();autoTitle()},150)}
+	// Auto-title: first line of body becomes title unless user manually edited it
+	var _titleManual=false;
+	function syncTitle(){var ti=document.querySelector('.editor-title');var hi=document.querySelector('.editor-title-hidden');if(ti&&hi){hi.value=ti.textContent;hi.dispatchEvent(new Event('input',{bubbles:true}))}}
+	function initAutoTitle(){_titleManual=false;var ti=document.querySelector('.editor-title');if(ti){ti.addEventListener('input',function(){_titleManual=true;syncTitle()})}}
+	function autoTitle(){if(_titleManual)return;var ta=getTA();var ti=document.querySelector('.editor-title');if(!ta||!ti)return;var lines=ta.value.split('\\n');var first='';for(var i=0;i<lines.length;i++){var l=lines[i].replace(/^#+\\s*/,'').trim();if(l){first=l;break}}if(first&&first!==ti.textContent){ti.textContent=first;syncTitle()}}
+	// Image resize via drag handles
+	var _resizing=null;
+	function initImgResize(pv){if(!pv||pv.dataset.imgResizeInit)return;pv.dataset.imgResizeInit='1';pv.addEventListener('mousedown',function(e){if(e.target.tagName==='IMG'&&e.target.classList.contains('preview-img')){var img=e.target,rect=img.getBoundingClientRect();var nearRight=e.clientX>rect.right-16,nearBottom=e.clientY>rect.bottom-16;if(nearRight||nearBottom){e.preventDefault();_resizing={img:img,startX:e.clientX,startY:e.clientY,startW:img.offsetWidth,startH:img.offsetHeight}}}})}
+	document.addEventListener('mousemove',function(e){if(!_resizing)return;e.preventDefault();var dx=e.clientX-_resizing.startX,dy=e.clientY-_resizing.startY;var nw=Math.max(32,_resizing.startW+dx);var ratio=_resizing.startH/_resizing.startW;_resizing.img.style.width=nw+'px';_resizing.img.style.height=Math.round(nw*ratio)+'px'});
+	document.addEventListener('mouseup',function(){if(_resizing){_resizing=null;syncPV()}});
+	function wrapSel(a,b){var pv=getPV();if(pv){var cmdMap={'**':'bold','*':'italic','~~':'strikethrough'};var cmd=cmdMap[a];if(cmd){document.execCommand(cmd,false,null);syncPV();pv.focus();return}}var t=getTA();if(!t)return;var s=t.selectionStart,e=t.selectionEnd,v=t.value,sel=v.substring(s,e)||'text';t.value=v.substring(0,s)+a+sel+b+v.substring(e);t.selectionStart=s+a.length;t.selectionEnd=s+a.length+sel.length;t.focus();t.dispatchEvent(new Event('input',{bubbles:true}))}
+	function insertPfx(p){var pv=getPV();if(pv){var sel=window.getSelection();if(sel.rangeCount){var range=sel.getRangeAt(0);var block=range.startContainer;while(block&&block!==pv&&block.nodeType!==1)block=block.parentNode;if(!block||block===pv)block=range.startContainer.parentNode;var hm=p.match(/^(#{1,6})\\s/);if(hm){var lvl=hm[1].length;var tag='h'+lvl;var neo=document.createElement(tag);neo.textContent=block.textContent;block.parentNode.replaceChild(neo,block);syncPV();pv.focus();return}if(p==='- '||p==='1. '||p==='- [ ] '){document.execCommand('insertUnorderedList',false,null);syncPV();pv.focus();return}}return}var t=getTA();if(!t)return;var s=t.selectionStart,ls=t.value.lastIndexOf('\\n',s-1)+1;t.value=t.value.substring(0,ls)+p+t.value.substring(ls);t.selectionStart=t.selectionEnd=s+p.length;t.focus();t.dispatchEvent(new Event('input',{bubbles:true}))}
+	function insertTxt(x){var pv=getPV();if(pv){if(x==='\\n---\\n'){document.execCommand('insertHorizontalRule',false,null);syncPV();pv.focus();return}document.execCommand('insertText',false,x);syncPV();pv.focus();return}var t=getTA();if(!t)return;var s=t.selectionStart;t.value=t.value.substring(0,s)+x+t.value.substring(t.selectionEnd);t.selectionStart=t.selectionEnd=s+x.length;t.focus();t.dispatchEvent(new Event('input',{bubbles:true}))}
+	function insertLink(){var pv=getPV();if(pv){var u=prompt('URL:');if(!u)return;var sel=window.getSelection();var txt=sel.toString()||'link';document.execCommand('insertHTML',false,'<a href="'+u+'">'+txt+'</a>');syncPV();pv.focus();return}var u=prompt('URL:');if(u)wrapSel('[',']('+u+')')}
+	function insertImg(){var pv=getPV();if(pv){var u=prompt('Image URL:');if(!u)return;document.execCommand('insertHTML',false,'<img src="'+u+'" alt="image" class="preview-img" />');syncPV();pv.focus();return}var u=prompt('Image URL:');if(u)insertTxt('![image]('+u+')')}
 	function uploadFile(f){if(!f)return;var fd=new FormData();fd.append('file',f);var s=document.getElementById('autosave-status');if(s)s.innerHTML='<span class="autosave-saving">Uploading...</span>';fetch('/fragments/upload',{method:'POST',body:fd}).then(function(r){return r.json()}).then(function(d){if(d.error){alert(d.error);return}insertTxt(d.markdown)}).catch(function(e){alert('Upload failed: '+e.message)}).finally(function(){if(s)s.innerHTML=''})}
 	function handleDrop(e){e.preventDefault();var files=e.dataTransfer&&e.dataTransfer.files;if(!files||!files.length)return;for(var i=0;i<files.length;i++)uploadFile(files[i])}
-	function togglePreview(){var ta=document.getElementById('note-body'),pv=document.getElementById('note-preview'),tb=document.getElementById('editor-toolbar'),btn=document.getElementById('preview-toggle');if(!ta||!pv)return;if(pv.style.display==='none'){fetch('/fragments/preview',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'body='+encodeURIComponent(ta.value)}).then(function(r){return r.text()}).then(function(h){pv.innerHTML=h;pv.style.display='';ta.style.display='none';if(tb)tb.style.display='none';if(btn)btn.innerHTML='&#9998;';if(btn)btn.title='Edit'})}else{pv.style.display='none';ta.style.display='';if(tb)tb.style.display='';if(btn)btn.innerHTML='&#128065;';if(btn)btn.title='Preview'}}
-	document.addEventListener('keydown',function(e){if(!getTA())return;if((e.ctrlKey||e.metaKey)&&e.key==='b'){e.preventDefault();wrapSel('**','**')}if((e.ctrlKey||e.metaKey)&&e.key==='i'){e.preventDefault();wrapSel('*','*')}});
+	function htmlToMarkdown(el){function walk(node){if(node.nodeType===3){var txt=node.textContent;if(/^\\s*$/.test(txt)&&/\\n/.test(txt))return '';return txt;}if(node.nodeType!==1)return '';var tag=node.tagName.toLowerCase(),ch='';for(var i=0;i<node.childNodes.length;i++)ch+=walk(node.childNodes[i]);if(tag==='strong'||tag==='b'){var t=ch.replace(/^\\n+|\\n+$/g,'');return t?'**'+t+'**':''}if(tag==='em'||tag==='i'){var t=ch.replace(/^\\n+|\\n+$/g,'');return t?'*'+t+'*':''}if(tag==='del'||tag==='s'){var t=ch.replace(/^\\n+|\\n+$/g,'');return t?'~~'+t+'~~':''};if(tag==='code'&&node.parentElement&&node.parentElement.tagName.toLowerCase()==='pre')return ch;if(tag==='code')return '\`'+ch+'\`';if(tag==='pre')return '\\n\`\`\`\\n'+ch+'\\n\`\`\`\\n';if(tag==='h1')return '\\n# '+ch+'\\n';if(tag==='h2')return '\\n## '+ch+'\\n';if(tag==='h3')return '\\n### '+ch+'\\n';if(tag==='h4')return '\\n#### '+ch+'\\n';if(tag==='h5')return '\\n##### '+ch+'\\n';if(tag==='h6')return '\\n###### '+ch+'\\n';if(tag==='blockquote')return '\\n> '+ch.replace(/\\n/g,'\\n> ')+'\\n';if(tag==='hr')return '\\n---\\n';if(tag==='br')return '\\n';if(tag==='li'){var parent=node.parentElement;if(parent&&parent.tagName.toLowerCase()==='ol'){var idx=Array.prototype.indexOf.call(parent.children,node)+1;return idx+'. '+ch+'\\n'}return '- '+ch+'\\n'}if(tag==='ul'||tag==='ol')return '\\n'+ch;if(tag==='img'){var alt=node.getAttribute('alt')||'';var src=node.getAttribute('src')||'';var w=node.style.width||node.getAttribute('width');var h=node.style.height||node.getAttribute('height');var rm=src.match(/^\\/resources\\/([0-9a-zA-Z]{32})$/);if(w||h){var iSrc=rm?':/'+rm[1]:src;return '<img src="'+iSrc+'" alt="'+alt+'"'+(w?' width="'+parseInt(w)+'"':'')+(h?' height="'+parseInt(h)+'"':'')+' />'}if(rm)return '!['+alt+'](:/'+ rm[1]+')';return '!['+alt+']('+src+')'}if(tag==='a'){var href=node.getAttribute('href')||'';var lm=href.match(/^\\/resources\\/([0-9a-zA-Z]{32})$/);if(lm)return '['+ch+'](:/'+ lm[1]+')';return '['+ch+']('+href+')'}if(tag==='div'&&node.classList.contains('md-blank-line'))return '\\n';if(tag==='div'&&node.classList.contains('md-checkbox')){var checked=node.classList.contains('checked');var txt=ch.replace(/^[\\u2611\\u2610\\u2612\\u2705]\\s*/,'');return (checked?'- [x] ':'- [ ] ')+txt+'\\n'}if(tag==='p')return '\\n'+ch+'\\n';if(tag==='div'){if(!ch.trim()||ch==='\\n')return '\\n\\n';return '\\n'+ch+'\\n'}return ch}var md=walk(el);return md.replace(/^\\n+/,'').replace(/\\n+$/,'')}
+	function togglePreview(){var ta=document.getElementById('note-body'),pv=document.getElementById('note-preview'),tb=document.getElementById('editor-toolbar'),btn=document.getElementById('preview-toggle');if(!ta||!pv)return;if(pv.style.display==='none'){fetch('/fragments/preview',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'body='+encodeURIComponent(ta.value)}).then(function(r){return r.text()}).then(function(h){pv.innerHTML=h;pv.contentEditable='true';pv.style.display='';ta.style.display='none';if(btn)btn.innerHTML='&#9998;';if(btn)btn.title='Edit';activatePV(pv)})}else{if(_pvSyncTimer){clearTimeout(_pvSyncTimer);_pvSyncTimer=null}if(pv.contentEditable==='true'){ta.value=htmlToMarkdown(pv)}ta.dispatchEvent(new Event('input',{bubbles:true}));pv.contentEditable='false';pv.oninput=null;pv.onkeyup=null;pv.style.display='none';ta.style.display='';if(tb)tb.style.display='';if(btn)btn.innerHTML='&#128065;';if(btn)btn.title='Preview'}}
+	document.addEventListener('keydown',function(e){if(!getTA()&&!getPV())return;if((e.ctrlKey||e.metaKey)&&e.key==='b'){e.preventDefault();wrapSel('**','**')}if((e.ctrlKey||e.metaKey)&&e.key==='i'){e.preventDefault();wrapSel('*','*')}});
+	function activatePV(pv){if(!pv)return;pv.contentEditable='true';initImgResize(pv);pv.oninput=scheduleSyncPV;pv.onkeyup=null}
+	document.body.addEventListener('htmx:afterSettle',function(e){if(e.detail.target&&e.detail.target.id==='editor-panel'){initAutoTitle();var ta=getTA();if(ta){ta.addEventListener('input',function(){autoTitle()})}var pv=document.getElementById('note-preview');if(pv&&pv.style.display!=='none'){activatePV(pv)}}});
 	</script>
 </body>
 </html>`;
@@ -294,6 +356,7 @@ module.exports = {
 	noteListFragment,
 	editorFragment,
 	autosaveStatusFragment,
+	renderInlineMarkdown,
 	renderMarkdown,
 	searchResultsFragment,
 	layoutPage,

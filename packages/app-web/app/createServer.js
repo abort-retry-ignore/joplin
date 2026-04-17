@@ -604,6 +604,86 @@ const createServer = options => {
 			return;
 		}
 
+		// --- POST /login — authenticate via Joplin Server API ---
+		if (url.pathname === '/login' && request.method === 'POST') {
+			try {
+				const body = await parseBody(request);
+				const email = body.email || '';
+				const password = body.password || '';
+				if (!email || !password) {
+					response.writeHead(302, { Location: `/login?error=${encodeURIComponent('Email and password are required')}` });
+					response.end();
+					return;
+				}
+				const apiUrl = new URL('/api/sessions', joplinServerOrigin);
+				const requestContext = upstreamRequestContext(request);
+				const origin = `${requestContext.protocol}://${requestContext.host}`;
+				const payload = JSON.stringify({ email, password });
+				const loginResult = await new Promise((resolve, reject) => {
+					const upstreamRequest = http.request({
+						hostname: apiUrl.hostname,
+						port: apiUrl.port,
+						path: apiUrl.pathname + apiUrl.search,
+						method: 'POST',
+						headers: {
+							'Content-Type': 'application/json',
+							'Content-Length': Buffer.byteLength(payload),
+							Host: requestContext.host,
+							Origin: origin,
+							Referer: `${origin}/login`,
+							'X-Forwarded-Host': requestContext.host,
+							'X-Forwarded-Proto': requestContext.protocol,
+						},
+					}, upstreamResponse => {
+						const chunks = [];
+						upstreamResponse.on('data', chunk => chunks.push(chunk));
+						upstreamResponse.on('end', () => {
+							resolve({
+								statusCode: upstreamResponse.statusCode || 500,
+								body: Buffer.concat(chunks).toString('utf8'),
+							});
+						});
+					});
+
+					upstreamRequest.on('error', reject);
+					upstreamRequest.write(payload);
+					upstreamRequest.end();
+				});
+
+				if (loginResult.statusCode < 200 || loginResult.statusCode >= 300) {
+					response.writeHead(302, { Location: `/login?error=${encodeURIComponent('Invalid email or password')}` });
+					response.end();
+					return;
+				}
+				const session = JSON.parse(loginResult.body);
+				response.writeHead(302, {
+					'Set-Cookie': `sessionId=${session.id}; Path=/; HttpOnly; SameSite=Lax; Max-Age=43200`,
+					Location: '/',
+				});
+				response.end();
+			} catch (error) {
+				response.writeHead(302, { Location: `/login?error=${encodeURIComponent(`Login failed: ${error.message || error}`)}` });
+				response.end();
+			}
+			return;
+		}
+
+		if (url.pathname === '/login' && request.method === 'GET') {
+			const auth = await authenticatedUser(request);
+			if (!auth.error && auth.user) {
+				response.writeHead(302, { Location: '/' });
+				response.end();
+				return;
+			}
+
+			sendHtml(response, 200, templates.layoutPage({
+				user: null,
+				joplinBasePath: joplinPublicBasePath,
+				loginError: url.searchParams.get('error') || '',
+			}));
+			return;
+		}
+
 		// --- Joplin Server proxy ---
 		if (url.pathname === joplinPublicBasePath || url.pathname.startsWith(`${joplinPublicBasePath}/`)) {
 			proxyToJoplinServer(request, response, url);
@@ -617,7 +697,8 @@ const createServer = options => {
 			try {
 				const auth = await authenticatedUser(request);
 				if (auth.error || !auth.user) {
-					sendHtml(response, 200, templates.layoutPage({ user: null, joplinBasePath: joplinPublicBasePath }));
+					response.writeHead(302, { Location: '/login' });
+					response.end();
 					return;
 				}
 
@@ -651,7 +732,8 @@ const createServer = options => {
 		try {
 			const auth = await authenticatedUser(request);
 			if (auth.error || !auth.user) {
-				sendHtml(response, 200, templates.layoutPage({ user: null, joplinBasePath: joplinPublicBasePath }));
+				response.writeHead(302, { Location: '/login' });
+				response.end();
 				return;
 			}
 			const folders = await itemService.foldersByUserId(auth.user.id);
@@ -662,7 +744,8 @@ const createServer = options => {
 				joplinBasePath: joplinPublicBasePath,
 			}));
 		} catch (error) {
-			sendHtml(response, 200, templates.layoutPage({ user: null, joplinBasePath: joplinPublicBasePath }));
+			response.writeHead(302, { Location: '/login' });
+			response.end();
 		}
 	});
 };

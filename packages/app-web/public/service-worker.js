@@ -1,11 +1,11 @@
-const CACHE_NAME = 'joplock-shell-v2';
-const PRECACHE_URLS = ['/app.js', '/styles.css', '/manifest.webmanifest', '/icon.svg'];
+const CACHE_NAME = 'joplock-shell-v4';
+const STATIC_ASSETS = ['/styles.css', '/htmx.min.js', '/manifest.webmanifest', '/icon.svg'];
 
 self.addEventListener('install', event => {
 	event.waitUntil(
 		(async () => {
 			const cache = await caches.open(CACHE_NAME);
-			await cache.addAll(PRECACHE_URLS);
+			await cache.addAll(STATIC_ASSETS);
 		})(),
 	);
 	self.skipWaiting();
@@ -23,18 +23,26 @@ self.addEventListener('activate', event => {
 
 self.addEventListener('fetch', event => {
 	if (event.request.method !== 'GET') return;
+
 	const url = new URL(event.request.url);
-	if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/joplin/')) return;
+	// Only serve static assets from cache; everything else goes straight to network
+	if (!STATIC_ASSETS.includes(url.pathname)) return;
 
 	event.respondWith(
 		(async () => {
-			if (event.request.mode === 'navigate' || url.pathname === '/') {
-				return fetch(event.request);
+			// Network-first for static assets, cache fallback for offline
+			try {
+				const networkResponse = await fetch(event.request);
+				if (networkResponse.ok) {
+					const cache = await caches.open(CACHE_NAME);
+					cache.put(event.request, networkResponse.clone());
+				}
+				return networkResponse;
+			} catch (e) {
+				const cached = await caches.match(event.request);
+				if (cached) return cached;
+				throw e;
 			}
-
-			const cached = await caches.match(event.request);
-			if (cached) return cached;
-			return fetch(event.request);
 		})(),
 	);
 });

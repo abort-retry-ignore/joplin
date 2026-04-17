@@ -277,9 +277,17 @@ test('GET / returns full SSR page for logged-in user', async () => {
 	});
 });
 
-test('GET / returns login page for unauthenticated user', async () => {
+test('GET / redirects unauthenticated user to /login', async () => {
 	await withServer({}, async port => {
 		const res = await request(port, { path: '/', headers: {} });
+		assert.equal(res.statusCode, 302);
+		assert.equal(res.headers.location, '/login');
+	});
+});
+
+test('GET /login returns login page for unauthenticated user', async () => {
+	await withServer({}, async port => {
+		const res = await request(port, { path: '/login', headers: {} });
 		assert.equal(res.statusCode, 200);
 		assert.ok(res.body.includes('Login'));
 		assert.ok(!res.body.includes('NOTEBOOKS'));
