@@ -1218,7 +1218,11 @@ const vaultPage = () => `<!DOCTYPE html>
 				return fetch('/api/vaults/' + encodeURIComponent(id) + '/open', {
 					method: 'POST',
 				}).then(function(r) {
-					if (!r.ok) throw new Error('Failed to open vault session.');
+					if (!r.ok) {
+						return r.json().catch(function() { return null; }).then(function(data) {
+							throw new Error((data && data.error) || 'Failed to open vault session.');
+						});
+					}
 					return r.json();
 				});
 			}
@@ -1414,20 +1418,30 @@ const vaultPage = () => `<!DOCTYPE html>
 
 			document.getElementById('btnOpenVault').addEventListener('click', async function() {
 				var pw = document.getElementById('vaultPassword').value;
+				var btn = document.getElementById('btnOpenVault');
 				if (!pw) { showNotice('Enter the vault password.'); return; }
 				if (!selectedVaultId) { showNotice('No vault selected.'); return; }
 				hideNotice();
-				var verification = await verifyVaultPassword(selectedVaultId, pw);
-				if (!verification.ok) {
-					showNotice(verification.error || 'Could not open vault.');
-					return;
+				btn.disabled = true;
+				btn.textContent = 'Opening...';
+				try {
+					var verification = await verifyVaultPassword(selectedVaultId, pw);
+					if (!verification.ok) {
+						showNotice(verification.error || 'Could not open vault.');
+						return;
+					}
+					await openVaultSession(selectedVaultId);
+					// Hand off vault ID and password to app via sessionStorage. The DB
+					// driver reads and clears these on first load.
+					sessionStorage.setItem('joplin-vault-id', selectedVaultId);
+					sessionStorage.setItem('joplin-vault-password', pw);
+					window.location.href = '/app/';
+				} catch (error) {
+					showNotice(error && error.message ? error.message : 'Could not open vault.');
+				} finally {
+					btn.disabled = false;
+					btn.textContent = 'Open vault';
 				}
-				await openVaultSession(selectedVaultId);
-				// Hand off vault ID and password to app via sessionStorage. The DB
-				// driver reads and clears these on first load.
-				sessionStorage.setItem('joplin-vault-id', selectedVaultId);
-				sessionStorage.setItem('joplin-vault-password', pw);
-				window.location.href = '/app/';
 			});
 
 			document.getElementById('vaultPassword').addEventListener('keydown', function(e) {
