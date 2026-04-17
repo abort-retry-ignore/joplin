@@ -11,13 +11,6 @@ const joplinPublicBasePath = process.env.JOPLIN_PUBLIC_BASE_PATH || '/joplin';
 const joplinPublicBaseUrl = process.env.JOPLIN_PUBLIC_BASE_URL || `http://localhost:${port}`;
 const publicDir = path.join(__dirname, 'public');
 
-const renderIndex = () => {
-	const fs = require('fs');
-	const templatePath = path.join(publicDir, 'index.html');
-	const template = fs.readFileSync(templatePath, 'utf8');
-	return template.replace(/__JOPLIN_PUBLIC_BASE_PATH__/g, joplinPublicBasePath);
-};
-
 const databasePool = createPoolFromEnv(process.env);
 const sessionService = createSessionService(databasePool);
 const itemService = createItemService(databasePool);
@@ -28,7 +21,6 @@ const itemWriteService = createItemWriteService({
 
 const server = createServer({
 	publicDir,
-	renderIndex,
 	joplinPublicBasePath,
 	joplinPublicBaseUrl,
 	joplinServerOrigin,

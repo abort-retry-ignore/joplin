@@ -82,6 +82,21 @@ const createItemService = database => {
 			return result.rows.map(mapNoteRow);
 		},
 
+		async searchNotes(userId, query) {
+			if (!query || !query.trim()) return [];
+			const pattern = `%${query.trim()}%`;
+			const result = await database.query(`
+				SELECT id, jop_id, jop_parent_id, jop_updated_time, created_time, content
+				FROM items
+				WHERE owner_id = $1 AND jop_type = $2
+					AND convert_from(content, 'UTF8') ILIKE $3
+				ORDER BY jop_updated_time DESC, created_time DESC
+				LIMIT 50
+			`, [userId, MODEL_TYPE_NOTE, pattern]);
+
+			return result.rows.map(mapNoteRow);
+		},
+
 		async noteByUserIdAndJopId(userId, noteId) {
 			const result = await database.query(`
 				SELECT id, jop_id, jop_parent_id, jop_updated_time, created_time, content
