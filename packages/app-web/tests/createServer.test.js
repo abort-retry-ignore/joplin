@@ -385,6 +385,7 @@ test('DELETE /api/web/notes/:id deletes note for valid session', async () => {
 			deleteNote: async (_sessionId, noteId) => {
 				deletedNoteId = noteId;
 			},
+			updateNote: async () => ({ id: 'note-updated' }),
 		},
 		sessionService: {
 			userBySessionId: async sessionId => ({ id: 'user-1', email: 'user@example.com', sessionId }),
@@ -416,6 +417,137 @@ test('DELETE /api/web/notes/:id deletes note for valid session', async () => {
 
 		assert.equal(response.statusCode, 204);
 		assert.equal(deletedNoteId, 'note123');
+	} finally {
+		await new Promise(resolve => server.close(resolve));
+	}
+});
+
+test('PUT /api/web/notes/:id updates note for valid session', async () => {
+	const publicDir = fs.mkdtempSync(path.join(os.tmpdir(), 'joplock-public-'));
+	fs.writeFileSync(path.join(publicDir, 'index.html'), '<html></html>');
+	let updatedArgs = null;
+	const existingNote = { id: 'note123', title: 'Old title', body: 'Old body', parentId: 'folder1', createdTime: 1000 };
+
+	const server = createServer({
+		publicDir,
+		renderIndex: () => '<html></html>',
+		joplinPublicBasePath: '/joplin',
+		joplinPublicBaseUrl: 'http://localhost:5444',
+		joplinServerOrigin: 'http://server:22300',
+		itemService: {
+			foldersByUserId: async () => [],
+			folderByUserIdAndJopId: async () => null,
+			notesByUserId: async () => [],
+			noteByUserIdAndJopId: async (_userId, noteId) => {
+				if (noteId === 'note123') return existingNote;
+				return null;
+			},
+		},
+		itemWriteService: {
+			createFolder: async () => ({ id: 'folder-created' }),
+			deleteFolder: async () => {},
+			createNote: async () => ({ id: 'note-created' }),
+			deleteNote: async () => {},
+			updateNote: async (_sessionId, existing, updates) => {
+				updatedArgs = { existing, updates };
+				return { id: existing.id };
+			},
+		},
+		sessionService: {
+			userBySessionId: async sessionId => ({ id: 'user-1', email: 'user@example.com', sessionId }),
+		},
+	});
+
+	await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+	const port = server.address().port;
+
+	try {
+		const response = await new Promise((resolve, reject) => {
+			const req = http.request({
+				hostname: '127.0.0.1',
+				port,
+				path: '/api/web/notes/note123',
+				method: 'PUT',
+				headers: { Cookie: 'sessionId=test-session', 'Content-Type': 'application/json' },
+			}, res => {
+				let body = '';
+				res.setEncoding('utf8');
+				res.on('data', chunk => {
+					body += chunk;
+				});
+				res.on('end', () => resolve({ statusCode: res.statusCode, body }));
+			});
+			req.on('error', reject);
+			req.write(JSON.stringify({ title: 'New title', body: 'New body' }));
+			req.end();
+		});
+
+		assert.equal(response.statusCode, 200);
+		assert.deepEqual(updatedArgs.existing, existingNote);
+		assert.equal(updatedArgs.updates.title, 'New title');
+		assert.equal(updatedArgs.updates.body, 'New body');
+		const payload = JSON.parse(response.body);
+		assert.equal(payload.item.id, 'note123');
+	} finally {
+		await new Promise(resolve => server.close(resolve));
+	}
+});
+
+test('PUT /api/web/notes/:id returns 404 for nonexistent note', async () => {
+	const publicDir = fs.mkdtempSync(path.join(os.tmpdir(), 'joplock-public-'));
+	fs.writeFileSync(path.join(publicDir, 'index.html'), '<html></html>');
+
+	const server = createServer({
+		publicDir,
+		renderIndex: () => '<html></html>',
+		joplinPublicBasePath: '/joplin',
+		joplinPublicBaseUrl: 'http://localhost:5444',
+		joplinServerOrigin: 'http://server:22300',
+		itemService: {
+			foldersByUserId: async () => [],
+			folderByUserIdAndJopId: async () => null,
+			notesByUserId: async () => [],
+			noteByUserIdAndJopId: async () => null,
+		},
+		itemWriteService: {
+			createFolder: async () => ({ id: 'folder-created' }),
+			deleteFolder: async () => {},
+			createNote: async () => ({ id: 'note-created' }),
+			deleteNote: async () => {},
+			updateNote: async () => ({ id: 'nope' }),
+		},
+		sessionService: {
+			userBySessionId: async sessionId => ({ id: 'user-1', email: 'user@example.com', sessionId }),
+		},
+	});
+
+	await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+	const port = server.address().port;
+
+	try {
+		const response = await new Promise((resolve, reject) => {
+			const req = http.request({
+				hostname: '127.0.0.1',
+				port,
+				path: '/api/web/notes/nonexistent',
+				method: 'PUT',
+				headers: { Cookie: 'sessionId=test-session', 'Content-Type': 'application/json' },
+			}, res => {
+				let body = '';
+				res.setEncoding('utf8');
+				res.on('data', chunk => {
+					body += chunk;
+				});
+				res.on('end', () => resolve({ statusCode: res.statusCode, body }));
+			});
+			req.on('error', reject);
+			req.write(JSON.stringify({ title: 'New title' }));
+			req.end();
+		});
+
+		assert.equal(response.statusCode, 404);
+		const payload = JSON.parse(response.body);
+		assert.equal(payload.error, 'Note not found');
 	} finally {
 		await new Promise(resolve => server.close(resolve));
 	}

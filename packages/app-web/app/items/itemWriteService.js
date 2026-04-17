@@ -15,6 +15,7 @@ const serializeNote = note => {
 	const now = Date.now();
 	const noteId = note.id || itemId('1');
 	const parentId = note.parentId || '';
+	const createdTime = note.createdTime || now;
 
 	return {
 		id: noteId,
@@ -25,7 +26,7 @@ ${note.body || ''}
 
 id: ${noteId}
 parent_id: ${parentId}
-created_time: ${formatTimestamp(now)}
+created_time: ${formatTimestamp(createdTime)}
 updated_time: ${formatTimestamp(now)}
 is_conflict: 0
 latitude: 0.00000000
@@ -40,7 +41,7 @@ source: joplock-web
 source_application: net.cozic.joplock-web
 application_data: 
 order: 0
-user_created_time: ${formatTimestamp(now)}
+user_created_time: ${formatTimestamp(createdTime)}
 user_updated_time: ${formatTimestamp(now)}
 encryption_cipher_text: 
 encryption_applied: 0
@@ -175,6 +176,18 @@ const createItemWriteService = options => {
 
 		async createNote(sessionId, note, requestContext) {
 			const serialized = serializeNote(note);
+			await putSerializedItem(sessionId, serialized, requestContext);
+			return { id: serialized.id };
+		},
+
+		async updateNote(sessionId, existingNote, updates, requestContext) {
+			const serialized = serializeNote({
+				id: existingNote.id,
+				title: updates.title !== undefined ? updates.title : existingNote.title,
+				body: updates.body !== undefined ? updates.body : existingNote.body,
+				parentId: updates.parentId !== undefined ? updates.parentId : existingNote.parentId,
+				createdTime: existingNote.createdTime,
+			});
 			await putSerializedItem(sessionId, serialized, requestContext);
 			return { id: serialized.id };
 		},

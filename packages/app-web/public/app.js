@@ -151,10 +151,41 @@ const renderNoteDetail = note => {
 	}
 
 	elements.noteDetail.innerHTML = `
-		<h3>${escapeHtml(note.title || 'Untitled note')}</h3>
-		<div class="note-meta">Updated ${escapeHtml(new Date(note.updatedTime || 0).toLocaleString())}</div>
-		<pre>${escapeHtml(note.body || '')}</pre>
+		<div class="note-editor">
+			<input type="text" id="noteTitleInput" class="note-title-input" value="${escapeHtml(note.title || '')}" placeholder="Note title" />
+			<div class="note-meta">Updated ${escapeHtml(new Date(note.updatedTime || 0).toLocaleString())}</div>
+			<textarea id="noteBodyInput" class="note-body-input" placeholder="Write your note...">${escapeHtml(note.body || '')}</textarea>
+			<div class="note-editor-actions">
+				<button id="saveNoteButton" class="toolbar-button">Save</button>
+			</div>
+		</div>
 	`;
+
+	const saveButton = document.getElementById('saveNoteButton');
+	if (saveButton) {
+		saveButton.addEventListener('click', () => {
+			void saveNote();
+		});
+	}
+
+	const titleInput = document.getElementById('noteTitleInput');
+	const bodyInput = document.getElementById('noteBodyInput');
+	if (titleInput) {
+		titleInput.addEventListener('keydown', event => {
+			if ((event.ctrlKey || event.metaKey) && event.key === 's') {
+				event.preventDefault();
+				void saveNote();
+			}
+		});
+	}
+	if (bodyInput) {
+		bodyInput.addEventListener('keydown', event => {
+			if ((event.ctrlKey || event.metaKey) && event.key === 's') {
+				event.preventDefault();
+				void saveNote();
+			}
+		});
+	}
 };
 
 const loadNotes = async () => {
@@ -243,6 +274,46 @@ const deleteNote = async () => {
 		method: 'DELETE',
 	});
 	await loadNotes();
+};
+
+const saveNote = async () => {
+	if (!state.selectedNoteId) return;
+
+	const titleInput = document.getElementById('noteTitleInput');
+	const bodyInput = document.getElementById('noteBodyInput');
+	const saveButton = document.getElementById('saveNoteButton');
+	if (!titleInput || !bodyInput) return;
+
+	const title = titleInput.value.trim() || 'Untitled note';
+	const body = bodyInput.value;
+
+	if (saveButton) {
+		saveButton.disabled = true;
+		saveButton.textContent = 'Saving...';
+	}
+
+	try {
+		const payload = await requestJson(`/api/web/notes/${encodeURIComponent(state.selectedNoteId)}`, {
+			method: 'PUT',
+			body: JSON.stringify({ title, body }),
+		});
+
+		if (payload.item) {
+			renderNoteDetail(payload.item);
+		}
+
+		const noteIndex = state.notes.findIndex(n => n.id === state.selectedNoteId);
+		if (noteIndex >= 0 && payload.item) {
+			state.notes[noteIndex] = { ...state.notes[noteIndex], title: payload.item.title, bodyPreview: (payload.item.body || '').slice(0, 240) };
+			renderNotes();
+		}
+	} catch (error) {
+		elements.sessionStatus.textContent = error.message || 'Save failed.';
+		if (saveButton) {
+			saveButton.disabled = false;
+			saveButton.textContent = 'Save';
+		}
+	}
 };
 
 const bootstrap = async () => {

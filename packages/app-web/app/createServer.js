@@ -258,6 +258,41 @@ const createServer = options => {
 		}
 
 		if (url.pathname.startsWith('/api/web/notes/')) {
+			if (request.method === 'PUT') {
+				try {
+					const auth = await authenticatedUser(request);
+					if (auth.error) {
+						sendJson(response, 401, { error: auth.error });
+						return;
+					}
+
+					const noteId = decodeURIComponent(url.pathname.slice('/api/web/notes/'.length));
+					if (!noteId) {
+						sendJson(response, 404, { error: 'Note not found' });
+						return;
+					}
+
+					const existing = await itemService.noteByUserIdAndJopId(auth.user.id, noteId);
+					if (!existing) {
+						sendJson(response, 404, { error: 'Note not found' });
+						return;
+					}
+
+					const body = await readJsonBody(request);
+					const updated = await itemWriteService.updateNote(auth.user.sessionId, existing, {
+						title: body.title,
+						body: body.body,
+						parentId: body.parentId,
+					}, upstreamRequestContext(request));
+
+					const note = await itemService.noteByUserIdAndJopId(auth.user.id, updated.id);
+					sendJson(response, 200, { item: note });
+				} catch (error) {
+					sendJson(response, error.statusCode || 500, { error: error.message || `${error}` });
+				}
+				return;
+			}
+
 			if (request.method === 'DELETE') {
 				try {
 					const auth = await authenticatedUser(request);
