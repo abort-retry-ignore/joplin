@@ -1,14 +1,15 @@
-# Joplock Agent Guide
+# Joplock App-Web Agent Guide
 
 ## Purpose
 
-This branch builds `joplock`: built-in thin-client web interface for Joplin Server.
+This directory owns thin-client frontend planning and implementation for `joplock`.
 
-Use this guide when working on `joplock-dev` and related branches.
+Use this guide when working on `packages/app-web` and its integration with `packages/server`.
 
 ## Product Direction
 
-- extend existing `packages/server`
+- `packages/server` stays backend authority
+- `packages/app-web` becomes distinct thin-client web frontend
 - reuse existing Joplin Server auth/session/user model
 - keep compatibility with desktop/mobile/CLI clients
 - make browser thin and untrusted
@@ -23,26 +24,29 @@ Use this guide when working on `joplock-dev` and related branches.
 3. Preserve sync compatibility for other Joplin clients.
 4. Do not build new browser-local DB architecture.
 5. Do not route new work through `packages/app-mobile/docker-web` unless explicitly maintaining old branch behavior.
-6. Prefer adding new thin-client server modules over patching mobile-web experiments.
+6. `packages/app-web` should call app-oriented server APIs, not sync endpoints directly for normal UI behavior.
 7. Thin client does not need feature parity with desktop/mobile.
 
-## Branch Strategy
+## Package Responsibilities
 
-- long-term work should branch from upstream `dev`
-- keep fork close to `laurent22/joplin`
-- import upstream server changes regularly
-- avoid depending on old `feature/fs-driver-encryption` history
+### `packages/server`
 
-## Where New Work Should Go
+Owns:
+- login/session/auth
+- web API endpoints
+- sync compatibility
+- resource delivery
+- server-side note/folder/search logic
+- serving built `app-web` assets
 
-Primary area:
-- `packages/server`
+### `packages/app-web`
 
-Expected additions:
-- web app routes under `packages/server/src/routes/webapp/` or similar
-- thin-client API under `packages/server/src/routes/api/web/`
-- supporting services/models under `packages/server/src/services/webapp/` or similar
-- static/built frontend assets served by server
+Owns:
+- thin-client UI
+- routing/navigation in browser
+- API client layer
+- local transient UI state only
+- PWA shell/assets
 
 ## Where Not To Build Final Architecture
 
@@ -51,7 +55,7 @@ Avoid these for new thin-client architecture:
 - browser-local vault blob flow
 - browser SQLite WASM persistence for main app state
 - OPFS/IndexedDB-as-authority web plan
-- `packages/app-web/` scaffold from old plan unless explicitly revived with new reasoning
+- React Native web reuse as architectural base
 
 ## Functional Scope
 
@@ -88,6 +92,14 @@ Preferred sequence:
 1. start with direct reads/writes using existing server item model
 2. add projection/index layer only when performance or query complexity demands it
 
+## Frontend Guidance
+
+- keep UI distinct from existing Joplin clients
+- prefer clean web-native layout and interactions
+- avoid importing assumptions from mobile/desktop local-first startup flows
+- keep local state minimal and session-scoped
+- do not add offline features unless explicitly requested later
+
 ## Coding Guidance
 
 Follow repository standards from `CLAUDE.md`:
@@ -99,7 +111,7 @@ Follow repository standards from `CLAUDE.md`:
 - run `yarn updateIgnored` after adding new TypeScript files
 
 Additional branch guidance:
-- keep changes isolated to server/web thin-client areas where possible
+- keep frontend/backend split clean
 - avoid cross-app churn in `packages/lib` unless necessary
 - if changing shared code, note impact on desktop/mobile/CLI/server
 
@@ -108,23 +120,24 @@ Additional branch guidance:
 Preferred checks depend on touched area.
 
 Examples:
-- server route changes: targeted server tests, lint, typecheck
-- frontend shell changes: build frontend, smoke-test auth and API calls
+- app-web scaffold changes: build package, lint, verify server serving path assumptions
+- server integration changes: targeted server tests, auth smoke checks, API checks
 - shared model changes: targeted tests plus impact review
 
 Minimum expectation for significant work:
-- build passes for touched package(s)
+- touched package(s) build
 - no auth/session regressions for server login flow
 - thin-client routes protected correctly
 
 ## Current Intent
 
 Near-term target:
+- scaffold `packages/app-web`
 - authenticated `/app`
 - thin-client API endpoints for folders and notes
 - minimal but polished web UI
 
 Keep architecture aligned with:
 - same Joplin Server backend
-- distinct thin-client frontend
+- distinct thin-client frontend in `packages/app-web`
 - low browser trust
