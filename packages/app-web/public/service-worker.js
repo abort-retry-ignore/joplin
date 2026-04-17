@@ -1,5 +1,5 @@
 const CACHE_NAME = 'joplock-shell-v5';
-const STATIC_ASSETS = ['/styles.css', '/htmx.min.js', '/codemirror.min.js', '/manifest.webmanifest', '/icon.svg'];
+const STATIC_ASSETS = ['/styles.css', '/htmx.min.js', '/turndown.min.js', '/manifest.webmanifest', '/icon.svg'];
 
 self.addEventListener('install', event => {
 	event.waitUntil(

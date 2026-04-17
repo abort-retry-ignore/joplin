@@ -90,7 +90,8 @@ const editorFragment = (note, folders) => {
 				data-placeholder="Note title">${renderInlineMarkdown(escapeHtml(note.title || ''))}</div>
 			<span id="autosave-status"></span>
 			<span id="autosave-indicator" class="htmx-indicator">Saving...</span>
-			<button type="button" class="btn btn-icon" title="Preview" id="preview-toggle" onclick="togglePreview()">&#128065;</button>
+			<button type="button" class="btn btn-icon" title="Edit" id="preview-toggle" onclick="togglePreview()">&#9998;</button>
+			<button type="button" class="btn btn-icon" title="Toggle clean markdown (hide &lt;br&gt; tags)" id="clean-md-toggle" onclick="toggleCleanMd()" style="width:auto;padding:0 6px;font-size:11px">md</button>
 			<button type="button" class="btn btn-icon btn-danger" title="Delete"
 				hx-delete="/fragments/notes/${encodeURIComponent(note.id)}"
 				hx-target="#notelist-panel"
@@ -98,31 +99,33 @@ const editorFragment = (note, folders) => {
 				hx-confirm="Delete this note?">&#128465;</button>
 		</div>
 		<div class="editor-toolbar" id="editor-toolbar">
-			<button type="button" class="tb" title="Bold (Ctrl+B)" onclick="cmWrap('**')"><b>B</b></button>
-			<button type="button" class="tb" title="Italic (Ctrl+I)" onclick="cmWrap('*')"><i>I</i></button>
-			<button type="button" class="tb" title="Strikethrough" onclick="cmWrap('~~')"><s>S</s></button>
+			<button type="button" class="tb" title="Bold (Ctrl+B)" onclick="wrapSel('**','**')"><b>B</b></button>
+			<button type="button" class="tb" title="Italic (Ctrl+I)" onclick="wrapSel('*','*')"><i>I</i></button>
+			<button type="button" class="tb" title="Underline" onclick="wrapSel('++','++')"><u>U</u></button>
+			<button type="button" class="tb" title="Strikethrough" onclick="wrapSel('~~','~~')"><s>S</s></button>
 			<span class="tb-div"></span>
-			<button type="button" class="tb" title="Heading 1" onclick="cmPrefix('# ')">H1</button>
-			<button type="button" class="tb" title="Heading 2" onclick="cmPrefix('## ')">H2</button>
-			<button type="button" class="tb" title="Heading 3" onclick="cmPrefix('### ')">H3</button>
+			<button type="button" class="tb" title="Heading 1" onclick="insertPfx('# ')">H1</button>
+			<button type="button" class="tb" title="Heading 2" onclick="insertPfx('## ')">H2</button>
+			<button type="button" class="tb" title="Heading 3" onclick="insertPfx('### ')">H3</button>
 			<span class="tb-div"></span>
-			<button type="button" class="tb" title="Bullet list" onclick="cmPrefix('- ')">&#8226;</button>
-			<button type="button" class="tb" title="Numbered list" onclick="cmPrefix('1. ')">1.</button>
-			<button type="button" class="tb" title="Checkbox" onclick="cmPrefix('- [ ] ')">&#9744;</button>
+			<button type="button" class="tb" title="Bullet list" onclick="insertPfx('- ')">&#8226;</button>
+			<button type="button" class="tb" title="Numbered list" onclick="insertPfx('1. ')">1.</button>
+			<button type="button" class="tb" title="Checkbox" onclick="insertPfx('- [ ] ')">&#9744;</button>
 			<span class="tb-div"></span>
-			<button type="button" class="tb" title="Inline code" onclick="cmWrap('\`')">&lt;/&gt;</button>
-			<button type="button" class="tb" title="Code block" onclick="cmInsert('\\n\`\`\`\\n\\n\`\`\`\\n')">{ }</button>
-			<button type="button" class="tb" title="Quote" onclick="cmPrefix('> ')">&#8220;</button>
-			<button type="button" class="tb" title="Horizontal rule" onclick="cmInsert('\\n---\\n')">&#8212;</button>
+			<button type="button" class="tb" title="Inline code" onclick="wrapSel('\`','\`')">&lt;/&gt;</button>
+			<button type="button" class="tb" title="Code block" onclick="wrapSel('\\n\`\`\`\\n','\\n\`\`\`\\n')">{ }</button>
+			<button type="button" class="tb" title="Quote" onclick="insertPfx('> ')">&#8220;</button>
+			<button type="button" class="tb" title="Horizontal rule" onclick="insertTxt('\\n---\\n')">&#8212;</button>
 			<span class="tb-div"></span>
-			<button type="button" class="tb" title="Link" onclick="cmLink()">&#128279;</button>
-			<button type="button" class="tb" title="Image" onclick="cmImage()">&#128247;</button>
+			<button type="button" class="tb" title="Link" onclick="insertLink()">&#128279;</button>
+			<button type="button" class="tb" title="Image" onclick="insertImg()">&#128247;</button>
 			<button type="button" class="tb" title="Upload file" onclick="document.getElementById('file-upload').click()">&#128206;</button>
 			<input type="file" id="file-upload" style="display:none" accept="image/*,application/pdf,.doc,.docx,.xls,.xlsx,.txt" onchange="uploadFile(this.files[0]);this.value=''" />
 		</div>
-		<textarea name="body" class="editor-body" id="note-body" style="display:none">${escapeHtml(note.body || '')}</textarea>
-		<div id="cm-editor" class="cm-editor-wrap" ondrop="handleDrop(event)" ondragover="event.preventDefault()"></div>
-		<div class="editor-preview" id="note-preview" style="display:none"></div>
+		<textarea name="body" class="editor-body" id="note-body"
+			placeholder="Start writing..."
+			ondrop="handleDrop(event)" ondragover="event.preventDefault()" style="display:none">${escapeHtml(note.body || '')}</textarea>
+		<div class="editor-preview" id="note-preview" contenteditable="true">${renderMarkdown(note.body || '')}</div>
 	</form>`;
 };
 
@@ -143,6 +146,9 @@ const renderInlineMarkdown = (text) => {
 const renderMarkdown = (markdown) => {
 	if (!markdown) return '';
 	let html = escapeHtml(markdown);
+
+	// Passthrough <br> tags (used for blank line preservation in Joplin)
+	html = html.replace(/&lt;br&gt;/g, '<br>');
 
 	// Passthrough inline <img> HTML tags (restore escaped versions)
 	// Handles: <img src=":/id" ...> and <img src="url" ...>
@@ -273,7 +279,7 @@ const layoutPage = (options = {}) => {
 	<link rel="icon" href="/icon.svg" type="image/svg+xml" />
 	<link rel="stylesheet" href="/styles.css" />
 	<script src="/htmx.min.js"></script>
-	<script src="/codemirror.min.js"></script>
+	<script src="/turndown.min.js"></script>
 	<title>Joplock</title>
 </head>
 <body class="theme-matrix">
@@ -313,83 +319,65 @@ const layoutPage = (options = {}) => {
 	function setTheme(t){document.body.className='theme-'+t;localStorage.setItem('joplock-theme',t)}
 	(function(){var s=localStorage.getItem('joplock-theme');if(s){document.body.className='theme-'+s;var e=document.querySelector('.theme-picker');if(e)e.value=s}})();
 	(function(){if(localStorage.getItem('sidebar-collapsed')){var sb=document.getElementById('sidebar-panel');if(sb)sb.classList.add('collapsed')}})();
-	var _cmView=null;
 	function getTA(){return document.getElementById('note-body')}
-	function destroyCM(){if(_cmView){_cmView.destroy();_cmView=null}}
-	function initCM(){
-		destroyCM();
-		var ta=getTA();if(!ta)return;
-		var wrap=document.getElementById('cm-editor');if(!wrap)return;
-		wrap.innerHTML='';
-		var c=CM;
-		var theme=c.EditorView.theme({
-			'&':{backgroundColor:'transparent',color:'var(--text)',fontSize:'14px'},
-			'.cm-content':{fontFamily:'"SF Mono","Fira Code","Cascadia Code",Consolas,monospace',lineHeight:'1.65',padding:'16px 20px',caretColor:'var(--accent)'},
-			'.cm-gutters':{display:'none'},
-			'.cm-cursor':{borderLeftColor:'var(--accent)'},
-			'&.cm-focused .cm-selectionBackground, .cm-selectionBackground':{backgroundColor:'var(--bg-active)'},
-			'.cm-activeLine':{backgroundColor:'var(--bg-hover)'},
-			'.cm-scroller':{overflow:'auto'}
-		});
-		var mdHL=c.HighlightStyle.define([
-			{tag:c.tags.heading1,fontSize:'1.6em',fontWeight:'bold',color:'var(--text-heading)'},
-			{tag:c.tags.heading2,fontSize:'1.4em',fontWeight:'bold',color:'var(--text-heading)'},
-			{tag:c.tags.heading3,fontSize:'1.2em',fontWeight:'bold',color:'var(--text-heading)'},
-			{tag:c.tags.strong,fontWeight:'bold',color:'var(--text-heading)'},
-			{tag:c.tags.emphasis,fontStyle:'italic'},
-			{tag:c.tags.strikethrough,textDecoration:'line-through'},
-			{tag:c.tags.monospace,fontFamily:'monospace',backgroundColor:'var(--bg-hover)',borderRadius:'3px'},
-			{tag:c.tags.url,color:'var(--accent)',textDecoration:'underline'},
-			{tag:c.tags.link,color:'var(--accent)'},
-			{tag:c.tags.meta,color:'var(--text-dim)'},
-			{tag:c.tags.quote,color:'var(--text-dim)',fontStyle:'italic'},
-			{tag:c.tags.list,color:'var(--accent)'}
-		]);
-		_cmView=new c.EditorView({
-			parent:wrap,
-			state:c.EditorState.create({
-				doc:ta.value,
-				extensions:[
-					c.markdown({base:c.markdownLanguage}),
-					theme,
-					c.syntaxHighlighting(mdHL),
-					c.syntaxHighlighting(c.defaultHighlightStyle,{fallback:true}),
-					c.history(),
-					c.drawSelection(),
-					c.highlightActiveLine(),
-					c.highlightSelectionMatches(),
-					c.bracketMatching(),
-					c.keymap.of([...c.defaultKeymap,...c.historyKeymap,...c.searchKeymap,c.indentWithTab]),
-					c.placeholder('Start writing...'),
-					c.EditorView.lineWrapping,
-					c.EditorView.updateListener.of(function(u){
-						if(u.docChanged){
-							ta.value=u.state.doc.toString();
-							ta.dispatchEvent(new Event('input',{bubbles:true}));
-							autoTitle();
-						}
-					})
-				]
-			})
-		});
-		_cmView.focus();
-	}
+	function getPV(){var pv=document.getElementById('note-preview');return pv&&pv.style.display!=='none'?pv:null}
+	var _cleanMd=localStorage.getItem('joplock-clean-md')!=='0';
+	function cleanForDisplay(md){return md.split('\\n').map(function(l){return l==='<br>'?'':l}).join('\\n')}
+	function dirtyForSave(md){var lines=md.split('\\n');var out=[];for(var i=0;i<lines.length;i++){if(lines[i]===''&&i>0&&out.length>0&&out[out.length-1]===''){out.push('<br>');continue}out.push(lines[i])}return out.join('\\n')}
+	function applyCleanMd(){var ta=getTA();if(!ta)return;var btn=document.getElementById('clean-md-toggle');if(_cleanMd){ta.value=cleanForDisplay(ta.value);if(btn)btn.classList.add('active')}else{ta.value=dirtyForSave(ta.value);if(btn)btn.classList.remove('active')}}
+	function toggleCleanMd(){_cleanMd=!_cleanMd;localStorage.setItem('joplock-clean-md',_cleanMd?'1':'0');applyCleanMd()}
+	var _pvSyncTimer=null;
+	function syncPV(){var pv=getPV(),ta=getTA();if(pv&&ta){var md=htmlToMarkdown(pv);if(_cleanMd){ta.value=cleanForDisplay(md)}else{ta.value=md}ta.dispatchEvent(new Event('input',{bubbles:true}))}}
+	function scheduleSyncPV(){if(_pvSyncTimer)clearTimeout(_pvSyncTimer);_pvSyncTimer=setTimeout(function(){_pvSyncTimer=null;syncPV();autoTitle()},150)}
 	// Auto-title: first line of body becomes title unless user manually edited it
 	var _titleManual=false;
 	function syncTitle(){var ti=document.querySelector('.editor-title');var hi=document.querySelector('.editor-title-hidden');if(ti&&hi){hi.value=ti.textContent;hi.dispatchEvent(new Event('input',{bubbles:true}))}}
 	function initAutoTitle(){_titleManual=false;var ti=document.querySelector('.editor-title');if(ti){ti.addEventListener('input',function(){_titleManual=true;syncTitle()})}}
 	function autoTitle(){if(_titleManual)return;var ta=getTA();var ti=document.querySelector('.editor-title');if(!ta||!ti)return;var lines=ta.value.split('\\n');var first='';for(var i=0;i<lines.length;i++){var l=lines[i].replace(/^#+\\s*/,'').trim();if(l){first=l;break}}if(first&&first!==ti.textContent){ti.textContent=first;syncTitle()}}
-	// CM6 toolbar helpers
-	function cmWrap(mark){if(!_cmView)return;var s=_cmView.state,sel=s.selection.main;var txt=s.sliceDoc(sel.from,sel.to)||'text';_cmView.dispatch({changes:{from:sel.from,to:sel.to,insert:mark+txt+mark},selection:{anchor:sel.from+mark.length,head:sel.from+mark.length+txt.length}});_cmView.focus()}
-	function cmPrefix(pfx){if(!_cmView)return;var s=_cmView.state,sel=s.selection.main;var line=s.doc.lineAt(sel.from);_cmView.dispatch({changes:{from:line.from,to:line.from,insert:pfx}});_cmView.focus()}
-	function cmInsert(txt){if(!_cmView)return;var s=_cmView.state,sel=s.selection.main;_cmView.dispatch({changes:{from:sel.from,to:sel.to,insert:txt},selection:{anchor:sel.from+txt.length}});_cmView.focus()}
-	function cmLink(){var u=prompt('URL:');if(!u)return;if(!_cmView)return;var s=_cmView.state,sel=s.selection.main;var txt=s.sliceDoc(sel.from,sel.to)||'link';_cmView.dispatch({changes:{from:sel.from,to:sel.to,insert:'['+txt+']('+u+')'}});_cmView.focus()}
-	function cmImage(){var u=prompt('Image URL:');if(!u)return;if(!_cmView)return;var s=_cmView.state,sel=s.selection.main;_cmView.dispatch({changes:{from:sel.from,to:sel.to,insert:'![image]('+u+')'}});_cmView.focus()}
-	function uploadFile(f){if(!f)return;var fd=new FormData();fd.append('file',f);var s=document.getElementById('autosave-status');if(s)s.innerHTML='<span class="autosave-saving">Uploading...</span>';fetch('/fragments/upload',{method:'POST',body:fd}).then(function(r){return r.json()}).then(function(d){if(d.error){alert(d.error);return}cmInsert(d.markdown)}).catch(function(e){alert('Upload failed: '+e.message)}).finally(function(){if(s)s.innerHTML=''})}
+	// Image resize via drag handles
+	var _resizing=null;
+	function initImgResize(pv){if(!pv||pv.dataset.imgResizeInit)return;pv.dataset.imgResizeInit='1';pv.addEventListener('mousedown',function(e){if(e.target.tagName==='IMG'&&e.target.classList.contains('preview-img')){var img=e.target,rect=img.getBoundingClientRect();var nearRight=e.clientX>rect.right-16,nearBottom=e.clientY>rect.bottom-16;if(nearRight||nearBottom){e.preventDefault();_resizing={img:img,startX:e.clientX,startY:e.clientY,startW:img.offsetWidth,startH:img.offsetHeight}}}})}
+	document.addEventListener('mousemove',function(e){if(!_resizing)return;e.preventDefault();var dx=e.clientX-_resizing.startX,dy=e.clientY-_resizing.startY;var nw=Math.max(32,_resizing.startW+dx);var ratio=_resizing.startH/_resizing.startW;_resizing.img.style.width=nw+'px';_resizing.img.style.height=Math.round(nw*ratio)+'px'});
+	document.addEventListener('mouseup',function(){if(_resizing){_resizing=null;syncPV()}});
+	function wrapSel(a,b){var pv=getPV();if(pv){var cmdMap={'**':'bold','*':'italic','~~':'strikethrough'};var cmd=cmdMap[a];if(cmd){document.execCommand(cmd,false,null);syncPV();pv.focus();return}}var t=getTA();if(!t)return;var s=t.selectionStart,e=t.selectionEnd,v=t.value,sel=v.substring(s,e)||'text';t.value=v.substring(0,s)+a+sel+b+v.substring(e);t.selectionStart=s+a.length;t.selectionEnd=s+a.length+sel.length;t.focus();t.dispatchEvent(new Event('input',{bubbles:true}))}
+	function insertPfx(p){var pv=getPV();if(pv){var sel=window.getSelection();if(sel.rangeCount){var range=sel.getRangeAt(0);var block=range.startContainer;while(block&&block!==pv&&block.nodeType!==1)block=block.parentNode;if(!block||block===pv)block=range.startContainer.parentNode;var hm=p.match(/^(#{1,6})\\s/);if(hm){var lvl=hm[1].length;var tag='h'+lvl;var neo=document.createElement(tag);neo.textContent=block.textContent;block.parentNode.replaceChild(neo,block);syncPV();pv.focus();return}if(p==='- '||p==='1. '||p==='- [ ] '){document.execCommand('insertUnorderedList',false,null);syncPV();pv.focus();return}}return}var t=getTA();if(!t)return;var s=t.selectionStart,ls=t.value.lastIndexOf('\\n',s-1)+1;t.value=t.value.substring(0,ls)+p+t.value.substring(ls);t.selectionStart=t.selectionEnd=s+p.length;t.focus();t.dispatchEvent(new Event('input',{bubbles:true}))}
+	function insertTxt(x){var pv=getPV();if(pv){if(x==='\\n---\\n'){document.execCommand('insertHorizontalRule',false,null);syncPV();pv.focus();return}document.execCommand('insertText',false,x);syncPV();pv.focus();return}var t=getTA();if(!t)return;var s=t.selectionStart;t.value=t.value.substring(0,s)+x+t.value.substring(t.selectionEnd);t.selectionStart=t.selectionEnd=s+x.length;t.focus();t.dispatchEvent(new Event('input',{bubbles:true}))}
+	function insertLink(){var pv=getPV();if(pv){var u=prompt('URL:');if(!u)return;var sel=window.getSelection();var txt=sel.toString()||'link';document.execCommand('insertHTML',false,'<a href="'+u+'">'+txt+'</a>');syncPV();pv.focus();return}var u=prompt('URL:');if(u)wrapSel('[',']('+u+')')}
+	function insertImg(){var pv=getPV();if(pv){var u=prompt('Image URL:');if(!u)return;document.execCommand('insertHTML',false,'<img src="'+u+'" alt="image" class="preview-img" />');syncPV();pv.focus();return}var u=prompt('Image URL:');if(u)insertTxt('![image]('+u+')')}
+	function uploadFile(f){if(!f)return;var fd=new FormData();fd.append('file',f);var s=document.getElementById('autosave-status');if(s)s.innerHTML='<span class="autosave-saving">Uploading...</span>';fetch('/fragments/upload',{method:'POST',body:fd}).then(function(r){return r.json()}).then(function(d){if(d.error){alert(d.error);return}insertTxt(d.markdown)}).catch(function(e){alert('Upload failed: '+e.message)}).finally(function(){if(s)s.innerHTML=''})}
 	function handleDrop(e){e.preventDefault();var files=e.dataTransfer&&e.dataTransfer.files;if(!files||!files.length)return;for(var i=0;i<files.length;i++)uploadFile(files[i])}
-	function togglePreview(){var wrap=document.getElementById('cm-editor'),pv=document.getElementById('note-preview'),tb=document.getElementById('editor-toolbar'),btn=document.getElementById('preview-toggle'),ta=getTA();if(!wrap||!pv||!ta)return;if(pv.style.display==='none'){fetch('/fragments/preview',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'body='+encodeURIComponent(ta.value)}).then(function(r){return r.text()}).then(function(h){pv.innerHTML=h;pv.style.display='';wrap.style.display='none';if(tb)tb.style.display='none';if(btn)btn.innerHTML='&#9998;';if(btn)btn.title='Edit'})}else{pv.style.display='none';wrap.style.display='';if(tb)tb.style.display='';if(btn)btn.innerHTML='&#128065;';if(btn)btn.title='Preview';if(_cmView)_cmView.focus()}}
-	document.addEventListener('keydown',function(e){if(!_cmView)return;if((e.ctrlKey||e.metaKey)&&e.key==='b'){e.preventDefault();cmWrap('**')}if((e.ctrlKey||e.metaKey)&&e.key==='i'){e.preventDefault();cmWrap('*')}});
-	document.body.addEventListener('htmx:afterSettle',function(e){if(e.detail.target&&e.detail.target.id==='editor-panel'){initAutoTitle();initCM()}});
+	var _tdService=null;
+	function getTurndown(){
+		if(_tdService)return _tdService;
+		var td=new TurndownService({headingStyle:'atx',hr:'---',codeBlockStyle:'fenced',bulletListMarker:'-',br:'\\n'});
+		// Joplin resource images (with optional resize dimensions)
+		td.addRule('joplinImg',{filter:function(n){return n.nodeName==='IMG'},replacement:function(c,n){
+			var alt=n.getAttribute('alt')||'';var src=n.getAttribute('src')||'';
+			var w=n.style.width||n.getAttribute('width');var h=n.style.height||n.getAttribute('height');
+			var rm=src.match(/^\\/resources\\/([0-9a-zA-Z]{32})$/);
+			if(w||h){var iSrc=rm?':/'+rm[1]:src;return '<img src="'+iSrc+'" alt="'+alt+'"'+(w?' width="'+parseInt(w)+'"':'')+(h?' height="'+parseInt(h)+'"':'')+' />'}
+			if(rm)return '!['+alt+'](:/'+ rm[1]+')';return '!['+alt+']('+src+')'}});
+		// Joplin resource links
+		td.addRule('joplinLink',{filter:function(n){return n.nodeName==='A'&&/^\\/resources\\/[0-9a-zA-Z]{32}$/.test(n.getAttribute('href')||'')},
+			replacement:function(c,n){var m=n.getAttribute('href').match(/^\\/resources\\/([0-9a-zA-Z]{32})$/);return '['+c+'](:/'+ m[1]+')'}});
+		// md-blank-line divs — emit <br> so Joplin preserves the blank line
+		td.addRule('blankLine',{filter:function(n){return n.nodeName==='DIV'&&n.classList.contains('md-blank-line')},replacement:function(){return '\\n<br>\\n'}});
+		// md-checkbox divs
+		td.addRule('checkbox',{filter:function(n){return n.nodeName==='DIV'&&n.classList.contains('md-checkbox')},
+			replacement:function(c,n){var checked=n.classList.contains('checked');var txt=c.replace(/^[\\u2611\\u2610\\u2612\\u2705]\\s*/,'');return (checked?'- [x] ':'- [ ] ')+txt+'\\n'}});
+		// Strikethrough
+		td.addRule('strikethrough',{filter:['del','s'],replacement:function(c){return c.trim()?'~~'+c.trim()+'~~':''}});
+		// Empty divs from contenteditable (Enter key creates <div><br></div>) — emit <br> for blank line
+		td.addRule('emptyDiv',{filter:function(n){return n.nodeName==='DIV'&&!n.classList.length&&(!n.textContent.trim()||n.innerHTML==='<br>')},replacement:function(){return '\\n<br>\\n'}});
+		// Empty paragraphs from contenteditable (<p><br></p>) — emit <br> for blank line
+		td.addRule('emptyP',{filter:function(n){return n.nodeName==='P'&&(!n.textContent.trim()||n.innerHTML==='<br>')},replacement:function(){return '\\n\\n<br>\\n\\n'}});
+		_tdService=td;return td}
+	function htmlToMarkdown(el){return getTurndown().turndown(el.innerHTML)}
+	function togglePreview(){var ta=document.getElementById('note-body'),pv=document.getElementById('note-preview'),tb=document.getElementById('editor-toolbar'),btn=document.getElementById('preview-toggle');if(!ta||!pv)return;if(pv.style.display==='none'){var body=_cleanMd?dirtyForSave(ta.value):ta.value;fetch('/fragments/preview',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'body='+encodeURIComponent(body)}).then(function(r){return r.text()}).then(function(h){pv.innerHTML=h;pv.contentEditable='true';pv.style.display='';ta.style.display='none';if(btn)btn.innerHTML='&#9998;';if(btn)btn.title='Edit';activatePV(pv)})}else{if(_pvSyncTimer){clearTimeout(_pvSyncTimer);_pvSyncTimer=null}if(pv.contentEditable==='true'){var md=htmlToMarkdown(pv);ta.value=_cleanMd?cleanForDisplay(md):md}ta.dispatchEvent(new Event('input',{bubbles:true}));pv.contentEditable='false';pv.oninput=null;pv.onkeyup=null;pv.style.display='none';ta.style.display='';if(tb)tb.style.display='';if(btn)btn.innerHTML='&#128065;';if(btn)btn.title='Preview'}}
+	document.addEventListener('keydown',function(e){if(!getTA()&&!getPV())return;if((e.ctrlKey||e.metaKey)&&e.key==='b'){e.preventDefault();wrapSel('**','**')}if((e.ctrlKey||e.metaKey)&&e.key==='i'){e.preventDefault();wrapSel('*','*')}});
+	function activatePV(pv){if(!pv)return;pv.contentEditable='true';initImgResize(pv);pv.oninput=scheduleSyncPV;pv.onkeyup=null}
+	document.body.addEventListener('htmx:afterSettle',function(e){if(e.detail.target&&e.detail.target.id==='editor-panel'){initAutoTitle();var ta=getTA();if(ta){ta.addEventListener('input',function(){autoTitle()});if(_cleanMd)ta.value=cleanForDisplay(ta.value)}var pv=document.getElementById('note-preview');if(pv&&pv.style.display!=='none'){activatePV(pv)}var btn=document.getElementById('clean-md-toggle');if(btn&&_cleanMd)btn.classList.add('active')}});
+	document.body.addEventListener('htmx:configRequest',function(e){if(e.detail.parameters&&e.detail.parameters.body&&_cleanMd){e.detail.parameters.body=dirtyForSave(e.detail.parameters.body)}});
 	</script>
 </body>
 </html>`;

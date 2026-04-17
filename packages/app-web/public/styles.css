@@ -347,24 +347,6 @@ button { cursor: pointer; border: none; background: none; }
 	tab-size: 4;
 }
 
-/* CodeMirror 6 editor wrapper */
-.cm-editor-wrap {
-	flex: 1;
-	overflow: hidden;
-	display: flex;
-	flex-direction: column;
-}
-.cm-editor-wrap .cm-editor {
-	flex: 1;
-	overflow: hidden;
-}
-.cm-editor-wrap .cm-editor.cm-focused {
-	outline: none;
-}
-.cm-editor-wrap .cm-scroller {
-	overflow: auto;
-}
-
 /* Preview pane */
 .editor-preview {
 	flex: 1;
@@ -378,6 +360,10 @@ button { cursor: pointer; border: none; background: none; }
 .editor-preview p { margin: 0.2em 0; }
 .editor-preview p:first-child { margin-top: 0; }
 .editor-preview .md-blank-line { height: 1em; }
+.editor-preview[contenteditable="true"] {
+	cursor: text;
+	border-left: 2px solid var(--accent);
+}
 .editor-preview h1, .editor-preview h2, .editor-preview h3,
 .editor-preview h4, .editor-preview h5, .editor-preview h6 {
 	color: var(--text-heading);
@@ -415,6 +401,9 @@ button { cursor: pointer; border: none; background: none; }
 .editor-preview .md-checkbox { margin: 0.25em 0; }
 .editor-preview .md-checkbox.checked { text-decoration: line-through; opacity: 0.7; }
 .preview-img { max-width: 100%; border-radius: 6px; margin: 8px 0; cursor: default; }
+.editor-preview[contenteditable="true"] .preview-img { cursor: nwse-resize; border: 1px solid transparent; }
+.editor-preview[contenteditable="true"] .preview-img:hover { border-color: var(--accent); opacity: 0.95; }
+.editor-preview[contenteditable="true"] .preview-img:active { border-color: var(--accent); }
 
 /* Autosave */
 .autosave-ok { color: var(--accent); font-size: 11px; opacity: 0.8; }
@@ -491,6 +480,7 @@ button { cursor: pointer; border: none; background: none; }
 	transition: background 0.1s;
 }
 .btn-icon:hover { background: var(--bg-hover); }
+.btn-icon.active { color: var(--accent); background: var(--bg-active); }
 .btn-danger:hover { color: var(--danger); }
 
 .empty-hint {
