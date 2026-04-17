@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { serializeFolder, serializeNote } = require('../app/items/itemWriteService');
+const { serializeFolder, serializeNote, serializeResource } = require('../app/items/itemWriteService');
 
 test('serializeFolder should include title and parent id', () => {
 	const folder = serializeFolder({
@@ -30,4 +30,24 @@ test('serializeNote should include title body and parent id', () => {
 	assert.match(note.body, /Agenda items/);
 	assert.match(note.body, /parent_id: folder123/);
 	assert.match(note.body, /type_: 1/);
+});
+
+test('serializeResource should include mime size and type 4', () => {
+	const resource = serializeResource({
+		id: 'res12345678901234567890123456789a',
+		title: 'photo.png',
+		mime: 'image/png',
+		filename: 'photo.png',
+		fileExtension: 'png',
+		size: 12345,
+	});
+
+	assert.equal(resource.id, 'res12345678901234567890123456789a');
+	assert.equal(resource.metaPath, 'root:/res12345678901234567890123456789a.md:');
+	assert.equal(resource.blobPath, 'root:/.resource/res12345678901234567890123456789a:');
+	assert.match(resource.body, /photo\.png/);
+	assert.match(resource.body, /mime: image\/png/);
+	assert.match(resource.body, /size: 12345/);
+	assert.match(resource.body, /file_extension: png/);
+	assert.match(resource.body, /type_: 4/);
 });

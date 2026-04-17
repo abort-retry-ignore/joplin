@@ -110,9 +110,12 @@ const editorFragment = (note) => {
 			<span class="tb-div"></span>
 			<button type="button" class="tb" title="Link" onclick="insertLink()">&#128279;</button>
 			<button type="button" class="tb" title="Image" onclick="insertImg()">&#128247;</button>
+			<button type="button" class="tb" title="Upload file" onclick="document.getElementById('file-upload').click()">&#128206;</button>
+			<input type="file" id="file-upload" style="display:none" accept="image/*,application/pdf,.doc,.docx,.xls,.xlsx,.txt" onchange="uploadFile(this.files[0]);this.value=''" />
 		</div>
 		<textarea name="body" class="editor-body" id="note-body"
-			placeholder="Start writing...">${escapeHtml(note.body || '')}</textarea>
+			placeholder="Start writing..."
+			ondrop="handleDrop(event)" ondragover="event.preventDefault()">${escapeHtml(note.body || '')}</textarea>
 	</form>`;
 };
 
@@ -206,6 +209,8 @@ const layoutPage = (options = {}) => {
 	function insertTxt(x){var t=getTA();if(!t)return;var s=t.selectionStart;t.value=t.value.substring(0,s)+x+t.value.substring(t.selectionEnd);t.selectionStart=t.selectionEnd=s+x.length;t.focus();t.dispatchEvent(new Event('input',{bubbles:true}))}
 	function insertLink(){var u=prompt('URL:');if(u)wrapSel('[',']('+u+')')}
 	function insertImg(){var u=prompt('Image URL:');if(u)insertTxt('![image]('+u+')')}
+	function uploadFile(f){if(!f)return;var fd=new FormData();fd.append('file',f);var s=document.getElementById('autosave-status');if(s)s.innerHTML='<span class="autosave-saving">Uploading...</span>';fetch('/fragments/upload',{method:'POST',body:fd}).then(function(r){return r.json()}).then(function(d){if(d.error){alert(d.error);return}insertTxt(d.markdown)}).catch(function(e){alert('Upload failed: '+e.message)}).finally(function(){if(s)s.innerHTML=''})}
+	function handleDrop(e){e.preventDefault();var files=e.dataTransfer&&e.dataTransfer.files;if(!files||!files.length)return;for(var i=0;i<files.length;i++)uploadFile(files[i])}
 	document.addEventListener('keydown',function(e){if(!getTA())return;if((e.ctrlKey||e.metaKey)&&e.key==='b'){e.preventDefault();wrapSel('**','**')}if((e.ctrlKey||e.metaKey)&&e.key==='i'){e.preventDefault();wrapSel('*','*')}});
 	</script>
 </body>

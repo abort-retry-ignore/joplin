@@ -3,6 +3,8 @@ const { randomBytes } = require('crypto');
 
 const notePath = noteId => `root:/${noteId}.md:`;
 const folderPath = folderId => `root:/${folderId}.md:`;
+const resourceMetaPath = resourceId => `root:/${resourceId}.md:`;
+const resourceBlobPath = resourceId => `root:/.resource/${resourceId}:`;
 
 const itemId = suffix => {
 	const token = randomBytes(16).toString('hex').slice(0, 31);
@@ -81,6 +83,41 @@ type_: 2`,
 	};
 };
 
+const serializeResource = resource => {
+	const now = Date.now();
+	const resourceId = resource.id || itemId('4');
+	const mime = resource.mime || 'application/octet-stream';
+	const filename = resource.filename || '';
+	const fileExtension = resource.fileExtension || '';
+	const size = resource.size || 0;
+
+	return {
+		id: resourceId,
+		metaPath: resourceMetaPath(resourceId),
+		blobPath: resourceBlobPath(resourceId),
+		body: `${resource.title || filename || 'Untitled resource'}
+
+id: ${resourceId}
+mime: ${mime}
+filename: ${filename}
+created_time: ${formatTimestamp(now)}
+updated_time: ${formatTimestamp(now)}
+user_created_time: ${formatTimestamp(now)}
+user_updated_time: ${formatTimestamp(now)}
+file_extension: ${fileExtension}
+encryption_cipher_text: 
+encryption_applied: 0
+encryption_blob_encrypted: 0
+size: ${size}
+is_shared: 0
+share_id: 
+master_key_id: 
+user_data: 
+blob_updated_time: ${formatTimestamp(now)}
+type_: 4`,
+	};
+};
+
 const requestUpstream = (origin, options = {}, body = null) => {
 	const target = new URL(origin);
 	const requestHeaders = { ...(options.headers || {}) };
@@ -149,6 +186,30 @@ const createItemWriteService = options => {
 		return serializedItem.id;
 	};
 
+	const putBinaryItem = async (sessionId, itemPath, binaryBuffer, contentType, requestContext = {}) => {
+		const boundary = '----joplockblobbound';
+		const header = `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="blob"\r\nContent-Type: ${contentType}\r\n\r\n`;
+		const footer = `\r\n--${boundary}--\r\n`;
+		const body = Buffer.concat([
+			Buffer.from(header, 'utf8'),
+			binaryBuffer,
+			Buffer.from(footer, 'utf8'),
+		]);
+
+		const response = await requestUpstream(joplinServerOrigin, {
+			method: 'PUT',
+			path: `/api/items/${itemPath}/content`,
+			publicHost: requestContext.host || configuredPublicUrl.host,
+			publicProtocol: requestContext.protocol || configuredPublicUrl.protocol.replace(':', ''),
+			headers: {
+				'content-type': `multipart/form-data; boundary=${boundary}`,
+				'x-api-auth': sessionId,
+			},
+		}, body);
+
+		checkUpstreamResponse(response);
+	};
+
 	const deleteItem = async (sessionId, itemPath, requestContext = {}) => {
 		const response = await requestUpstream(joplinServerOrigin, {
 			method: 'DELETE',
@@ -195,6 +256,14 @@ const createItemWriteService = options => {
 		async deleteNote(sessionId, noteId, requestContext) {
 			await deleteItem(sessionId, notePath(noteId), requestContext);
 		},
+
+		async createResource(sessionId, resource, binaryBuffer, requestContext) {
+			const serialized = serializeResource(resource);
+			// Upload metadata .md first, then binary blob
+			await putSerializedItem(sessionId, { id: serialized.id, path: serialized.metaPath, body: serialized.body }, requestContext);
+			await putBinaryItem(sessionId, serialized.blobPath, binaryBuffer, resource.mime || 'application/octet-stream', requestContext);
+			return { id: serialized.id };
+		},
 	};
 };
 
@@ -202,4 +271,5 @@ module.exports = {
 	createItemWriteService,
 	serializeFolder,
 	serializeNote,
+	serializeResource,
 };

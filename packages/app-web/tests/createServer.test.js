@@ -12,6 +12,7 @@ const request = (port, options = {}) => {
 		method = 'GET',
 		headers = { Cookie: 'sessionId=test-session' },
 		body = null,
+		rawBody = null,
 	} = options;
 
 	return new Promise((resolve, reject) => {
@@ -22,15 +23,19 @@ const request = (port, options = {}) => {
 			method,
 			headers,
 		}, res => {
-			let responseBody = '';
-			res.setEncoding('utf8');
-			res.on('data', chunk => {
-				responseBody += chunk;
+			const chunks = [];
+			res.on('data', chunk => chunks.push(chunk));
+			res.on('end', () => {
+				const buf = Buffer.concat(chunks);
+				resolve({ statusCode: res.statusCode, body: buf.toString('utf8'), rawBody: buf, headers: res.headers });
 			});
-			res.on('end', () => resolve({ statusCode: res.statusCode, body: responseBody, headers: res.headers }));
 		});
 		req.on('error', reject);
-		if (body) req.write(body);
+		if (rawBody) {
+			req.write(rawBody);
+		} else if (body) {
+			req.write(body);
+		}
 		req.end();
 	});
 };
@@ -52,6 +57,9 @@ const defaultMocks = (overrides = {}) => ({
 		folderByUserIdAndJopId: async () => null,
 		notesByUserId: async () => [],
 		noteByUserIdAndJopId: async () => null,
+		searchNotes: async () => [],
+		resourceBlobByUserId: async () => null,
+		resourceMetaByUserId: async () => null,
 		...overrides.itemService,
 	},
 	itemWriteService: {
@@ -60,6 +68,7 @@ const defaultMocks = (overrides = {}) => ({
 		createNote: async () => ({ id: 'note-created' }),
 		deleteNote: async () => {},
 		updateNote: async () => ({ id: 'note-updated' }),
+		createResource: async () => ({ id: 'res-created' }),
 		...overrides.itemWriteService,
 	},
 	sessionService: {
@@ -296,5 +305,94 @@ test('GET /fragments/search returns matching notes', async () => {
 		const empty = await request(port, { path: '/fragments/search?q=' });
 		assert.equal(empty.statusCode, 200);
 		assert.equal(empty.body, '');
+	});
+});
+
+// --- Resource tests ---
+
+test('GET /resources/:id serves binary blob with correct content-type', async () => {
+	const blobData = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a]); // fake PNG header
+	await withServer({
+		itemService: {
+			resourceMetaByUserId: async (_uid, rid) => {
+				if (rid === 'abcdef01234567890abcdef012345678') return { id: rid, mime: 'image/png', title: 'test.png' };
+				return null;
+			},
+			resourceBlobByUserId: async (_uid, rid) => {
+				if (rid === 'abcdef01234567890abcdef012345678') return blobData;
+				return null;
+			},
+		},
+	}, async port => {
+		const res = await request(port, { path: '/resources/abcdef01234567890abcdef012345678' });
+		assert.equal(res.statusCode, 200);
+		assert.equal(res.headers['content-type'], 'image/png');
+		assert.ok(res.rawBody.equals(blobData));
+	});
+});
+
+test('GET /resources/:id returns 404 for missing resource', async () => {
+	await withServer({}, async port => {
+		const res = await request(port, { path: '/resources/abcdef01234567890abcdef012345678' });
+		assert.equal(res.statusCode, 404);
+	});
+});
+
+test('GET /resources/:id returns 400 for invalid resource ID', async () => {
+	await withServer({}, async port => {
+		const res = await request(port, { path: '/resources/not-valid' });
+		assert.equal(res.statusCode, 400);
+	});
+});
+
+test('POST /fragments/upload creates resource and returns markdown', async () => {
+	let createdResource = null;
+	let createdBuffer = null;
+	await withServer({
+		itemWriteService: {
+			createResource: async (_sid, resource, buffer) => {
+				createdResource = resource;
+				createdBuffer = buffer;
+				return { id: 'newresource01234567890abcdef01234' };
+			},
+		},
+	}, async port => {
+		const boundary = '----testboundary';
+		const fileContent = Buffer.from('fake image data');
+		const body = Buffer.concat([
+			Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="photo.png"\r\nContent-Type: image/png\r\n\r\n`),
+			fileContent,
+			Buffer.from(`\r\n--${boundary}--\r\n`),
+		]);
+
+		const res = await request(port, {
+			path: '/fragments/upload',
+			method: 'POST',
+			headers: {
+				Cookie: 'sessionId=test-session',
+				'Content-Type': `multipart/form-data; boundary=${boundary}`,
+				'Content-Length': body.length,
+			},
+			rawBody: body,
+		});
+		assert.equal(res.statusCode, 200);
+		const payload = JSON.parse(res.body);
+		assert.equal(payload.resourceId, 'newresource01234567890abcdef01234');
+		assert.ok(payload.markdown.includes('![photo.png](:/')); // image markdown
+		assert.equal(createdResource.mime, 'image/png');
+		assert.equal(createdResource.filename, 'photo.png');
+		assert.equal(createdResource.fileExtension, 'png');
+		assert.ok(createdBuffer.equals(fileContent));
+	});
+});
+
+test('POST /fragments/upload returns 401 for unauthenticated user', async () => {
+	await withServer({}, async port => {
+		const res = await request(port, {
+			path: '/fragments/upload',
+			method: 'POST',
+			headers: { 'Content-Type': 'multipart/form-data; boundary=x' },
+		});
+		assert.equal(res.statusCode, 401);
 	});
 });

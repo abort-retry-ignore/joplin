@@ -53,6 +53,51 @@ const readBody = request => {
 	});
 };
 
+const readRawBody = request => {
+	return new Promise((resolve, reject) => {
+		const chunks = [];
+		request.on('data', chunk => chunks.push(chunk));
+		request.on('end', () => resolve(Buffer.concat(chunks)));
+		request.on('error', reject);
+	});
+};
+
+// Minimal multipart parser — extracts the first file field
+const parseMultipart = (buffer, contentType) => {
+	const match = contentType.match(/boundary=(?:"([^"]+)"|([^\s;]+))/);
+	if (!match) return null;
+	const boundary = match[1] || match[2];
+	const boundaryBuf = Buffer.from(`--${boundary}`);
+
+	// Find first occurrence after the boundary
+	let start = buffer.indexOf(boundaryBuf);
+	if (start === -1) return null;
+	start += boundaryBuf.length;
+
+	// Find the header/body separator (\r\n\r\n)
+	const headerEnd = buffer.indexOf('\r\n\r\n', start);
+	if (headerEnd === -1) return null;
+	const headerStr = buffer.slice(start, headerEnd).toString('utf8');
+
+	// Extract filename and content-type from headers
+	const fnMatch = headerStr.match(/filename="([^"]+)"/);
+	const ctMatch = headerStr.match(/Content-Type:\s*(.+)/i);
+	const filename = fnMatch ? fnMatch[1] : 'upload';
+	const fileMime = ctMatch ? ctMatch[1].trim() : 'application/octet-stream';
+
+	const bodyStart = headerEnd + 4;
+	// Find ending boundary
+	const endBoundary = buffer.indexOf(boundaryBuf, bodyStart);
+	// The body ends 2 bytes before the next boundary (\r\n)
+	const bodyEnd = endBoundary !== -1 ? endBoundary - 2 : buffer.length;
+
+	return {
+		filename,
+		mime: fileMime,
+		data: buffer.slice(bodyStart, bodyEnd),
+	};
+};
+
 const parseBody = async request => {
 	const raw = await readBody(request);
 	if (!raw) return {};
@@ -242,6 +287,80 @@ const createServer = options => {
 				sendHtml(response, 200, `${templates.noteListFragment(notes, '', folderId)}<div id="editor-panel" hx-swap-oob="innerHTML"><div class="editor-empty">Select a note</div></div>`);
 			} catch (error) {
 				sendHtml(response, error.statusCode || 500, `<div class="empty-hint">Error: ${templates.escapeHtml(error.message || `${error}`)}</div>`);
+			}
+			return;
+		}
+
+		// --- Resource binary serving ---
+		if (url.pathname.startsWith('/resources/') && request.method === 'GET') {
+			try {
+				const auth = await authenticatedUser(request);
+				if (auth.error) { send(response, 401, 'Unauthorized', { 'Content-Type': 'text/plain' }); return; }
+
+				const resourceId = decodeURIComponent(url.pathname.slice('/resources/'.length));
+				if (!resourceId || !/^[0-9a-zA-Z]{32}$/.test(resourceId)) {
+					send(response, 400, 'Invalid resource ID', { 'Content-Type': 'text/plain' });
+					return;
+				}
+
+				const [meta, blob] = await Promise.all([
+					itemService.resourceMetaByUserId(auth.user.id, resourceId),
+					itemService.resourceBlobByUserId(auth.user.id, resourceId),
+				]);
+
+				if (!blob) { send(response, 404, 'Resource not found', { 'Content-Type': 'text/plain' }); return; }
+
+				const mime = (meta && meta.mime) || 'application/octet-stream';
+				response.writeHead(200, {
+					'Content-Type': mime,
+					'Content-Length': blob.length,
+					'Cache-Control': 'private, max-age=3600',
+				});
+				response.end(blob);
+			} catch (error) {
+				send(response, 500, 'Error loading resource', { 'Content-Type': 'text/plain' });
+			}
+			return;
+		}
+
+		// --- File upload (multipart) ---
+		if (url.pathname === '/fragments/upload' && request.method === 'POST') {
+			try {
+				const auth = await authenticatedUser(request);
+				if (auth.error) { sendJson(response, 401, { error: 'Session expired' }); return; }
+
+				const contentType = request.headers['content-type'] || '';
+				if (!contentType.includes('multipart/form-data')) {
+					sendJson(response, 400, { error: 'Expected multipart/form-data' });
+					return;
+				}
+
+				const rawBody = await readRawBody(request);
+				const file = parseMultipart(rawBody, contentType);
+				if (!file || !file.data.length) {
+					sendJson(response, 400, { error: 'No file uploaded' });
+					return;
+				}
+
+				const extMatch = file.filename.match(/\.([^.]+)$/);
+				const fileExtension = extMatch ? extMatch[1].toLowerCase() : '';
+
+				const created = await itemWriteService.createResource(auth.user.sessionId, {
+					title: file.filename,
+					mime: file.mime,
+					filename: file.filename,
+					fileExtension,
+					size: file.data.length,
+				}, file.data, upstreamRequestContext(request));
+
+				const isImage = file.mime.startsWith('image/');
+				const markdown = isImage
+					? `![${file.filename}](:/${created.id})`
+					: `[${file.filename}](:/${created.id})`;
+
+				sendJson(response, 200, { resourceId: created.id, markdown });
+			} catch (error) {
+				sendJson(response, error.statusCode || 500, { error: error.message || 'Upload failed' });
 			}
 			return;
 		}

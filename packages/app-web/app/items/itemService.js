@@ -1,5 +1,6 @@
 const MODEL_TYPE_NOTE = 1;
 const MODEL_TYPE_FOLDER = 2;
+const MODEL_TYPE_RESOURCE = 4;
 
 const decodeItemContent = content => {
 	if (!content) return {};
@@ -109,12 +110,50 @@ const createItemService = database => {
 			if (!row) return null;
 			return mapNoteRow(row);
 		},
+
+		// Returns the binary content of a resource blob (.resource/<id>)
+		async resourceBlobByUserId(userId, resourceId) {
+			const blobName = `.resource/${resourceId}`;
+			const result = await database.query(`
+				SELECT content
+				FROM items
+				WHERE owner_id = $1 AND name = $2
+				LIMIT 1
+			`, [userId, blobName]);
+
+			const row = result.rows[0];
+			if (!row) return null;
+			return row.content; // Buffer
+		},
+
+		// Returns resource metadata (mime, filename, etc.) from the .md item
+		async resourceMetaByUserId(userId, resourceId) {
+			const result = await database.query(`
+				SELECT content
+				FROM items
+				WHERE owner_id = $1 AND jop_type = $2 AND jop_id = $3
+				LIMIT 1
+			`, [userId, MODEL_TYPE_RESOURCE, resourceId]);
+
+			const row = result.rows[0];
+			if (!row) return null;
+			const content = decodeItemContent(row.content);
+			return {
+				id: resourceId,
+				title: content.title || '',
+				mime: content.mime || 'application/octet-stream',
+				filename: content.filename || '',
+				fileExtension: content.file_extension || '',
+				size: Number(content.size || 0),
+			};
+		},
 	};
 };
 
 module.exports = {
 	MODEL_TYPE_FOLDER,
 	MODEL_TYPE_NOTE,
+	MODEL_TYPE_RESOURCE,
 	createItemService,
 	decodeItemContent,
 	mapFolderRow,
