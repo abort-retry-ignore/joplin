@@ -1,6 +1,7 @@
 const MODEL_TYPE_NOTE = 1;
 const MODEL_TYPE_FOLDER = 2;
 const MODEL_TYPE_RESOURCE = 4;
+const TRASH_FOLDER_ID = 'de1e7ede1e7ede1e7ede1e7ede1e7ede';
 
 const decodeItemContent = content => {
 	if (!content) return {};
@@ -16,6 +17,7 @@ const mapFolderRow = row => {
 		parentId: row.jop_parent_id || '',
 		title: content.title || '',
 		icon: content.icon || '',
+		deletedTime: Number(content.deleted_time || 0),
 		createdTime: Number(content.created_time || row.created_time || 0),
 		updatedTime: Number(row.jop_updated_time || content.updated_time || 0),
 	};
@@ -32,6 +34,7 @@ const mapNoteRow = row => {
 		bodyPreview: body.slice(0, 240),
 		isTodo: !!Number(content.is_todo || 0),
 		todoCompleted: Number(content.todo_completed || 0),
+		deletedTime: Number(content.deleted_time || 0),
 		createdTime: Number(content.created_time || row.created_time || 0),
 		updatedTime: Number(row.jop_updated_time || content.updated_time || 0),
 	};
@@ -43,8 +46,15 @@ const mapNoteHeaderRow = row => {
 		id: row.jop_id,
 		parentId: row.jop_parent_id || '',
 		title: content.title || '',
+		deletedTime: Number(content.deleted_time || 0),
 		updatedTime: Number(row.jop_updated_time || content.updated_time || 0),
 	};
+};
+
+const deletedFilterSql = mode => {
+	if (mode === 'only') return ' AND COALESCE((convert_from(content, \'UTF8\')::json->>\'deleted_time\')::bigint, 0) > 0';
+	if (mode === 'all') return '';
+	return ' AND COALESCE((convert_from(content, \'UTF8\')::json->>\'deleted_time\')::bigint, 0) = 0';
 };
 
 const createItemService = database => {
@@ -53,7 +63,7 @@ const createItemService = database => {
 			const result = await database.query(`
 				SELECT id, jop_id, jop_parent_id, jop_updated_time, created_time, content
 				FROM items
-				WHERE owner_id = $1 AND jop_type = $2
+				WHERE owner_id = $1 AND jop_type = $2${deletedFilterSql('exclude')}
 				ORDER BY LOWER(COALESCE(convert_from(content, 'UTF8')::json->>'title', '')) ASC, created_time ASC
 			`, [userId, MODEL_TYPE_FOLDER]);
 
@@ -75,8 +85,9 @@ const createItemService = database => {
 
 		async notesByUserId(userId, options = {}) {
 			const folderId = options.folderId || '';
+			const deleted = options.deleted || 'exclude';
 			const params = [userId, MODEL_TYPE_NOTE];
-			let where = 'WHERE owner_id = $1 AND jop_type = $2';
+			let where = `WHERE owner_id = $1 AND jop_type = $2${deletedFilterSql(deleted)}`;
 
 			if (folderId) {
 				params.push(folderId);
@@ -93,11 +104,12 @@ const createItemService = database => {
 			return result.rows.map(mapNoteRow);
 		},
 
-		async noteHeadersByUserId(userId) {
+		async noteHeadersByUserId(userId, options = {}) {
+			const deleted = options.deleted || 'exclude';
 			const result = await database.query(`
 				SELECT id, jop_id, jop_parent_id, jop_updated_time, created_time, content
 				FROM items
-				WHERE owner_id = $1 AND jop_type = $2
+				WHERE owner_id = $1 AND jop_type = $2${deletedFilterSql(deleted)}
 				ORDER BY jop_updated_time DESC, created_time DESC
 			`, [userId, MODEL_TYPE_NOTE]);
 
@@ -111,6 +123,7 @@ const createItemService = database => {
 				SELECT id, jop_id, jop_parent_id, jop_updated_time, created_time, content
 				FROM items
 				WHERE owner_id = $1 AND jop_type = $2
+					AND COALESCE((convert_from(content, 'UTF8')::json->>'deleted_time')::bigint, 0) = 0
 					AND convert_from(content, 'UTF8') ILIKE $3
 				ORDER BY jop_updated_time DESC, created_time DESC
 				LIMIT 50
@@ -119,11 +132,12 @@ const createItemService = database => {
 			return result.rows.map(mapNoteRow);
 		},
 
-		async noteByUserIdAndJopId(userId, noteId) {
+		async noteByUserIdAndJopId(userId, noteId, options = {}) {
+			const deleted = options.deleted || 'exclude';
 			const result = await database.query(`
 				SELECT id, jop_id, jop_parent_id, jop_updated_time, created_time, content
 				FROM items
-				WHERE owner_id = $1 AND jop_type = $2 AND jop_id = $3
+				WHERE owner_id = $1 AND jop_type = $2 AND jop_id = $3${deletedFilterSql(deleted)}
 				LIMIT 1
 			`, [userId, MODEL_TYPE_NOTE, noteId]);
 
@@ -175,6 +189,7 @@ module.exports = {
 	MODEL_TYPE_FOLDER,
 	MODEL_TYPE_NOTE,
 	MODEL_TYPE_RESOURCE,
+	TRASH_FOLDER_ID,
 	createItemService,
 	decodeItemContent,
 	mapFolderRow,

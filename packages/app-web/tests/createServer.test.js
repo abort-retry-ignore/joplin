@@ -68,6 +68,8 @@ const defaultMocks = (overrides = {}) => ({
 		deleteFolder: async () => {},
 		createNote: async () => ({ id: 'note-created' }),
 		deleteNote: async () => {},
+		trashNote: async () => {},
+		restoreNote: async () => {},
 		updateNote: async () => ({ id: 'note-updated' }),
 		createResource: async () => ({ id: 'res-created' }),
 		...overrides.itemWriteService,
@@ -207,7 +209,7 @@ test('GET /fragments/nav returns HTML folder-note tree', async () => {
 test('GET /fragments/editor/:id returns HTML editor', async () => {
 	await withServer({
 		itemService: {
-			noteByUserIdAndJopId: async () => ({ id: 'n1', title: 'Test Note', body: 'Hello world', parentId: 'f1', updatedTime: Date.now() }),
+			noteByUserIdAndJopId: async () => ({ id: 'n1', title: 'Test Note', body: 'Hello world', parentId: 'f1', createdTime: 1000, updatedTime: 2000 }),
 		},
 	}, async port => {
 		const res = await request(port, { path: '/fragments/editor/n1' });
@@ -216,14 +218,17 @@ test('GET /fragments/editor/:id returns HTML editor', async () => {
 		assert.ok(res.body.includes('Test Note'));
 		assert.ok(res.body.includes('Hello world'));
 		assert.ok(res.body.includes('delay:1s'));
+		assert.ok(res.body.includes('name="baseUpdatedTime" value="2000"'));
+		assert.ok(res.body.includes('data-created-time="1000"'));
 	});
 });
 
 test('PUT /fragments/editor/:id autosaves and returns status', async () => {
 	let savedUpdates = null;
-	const existing = { id: 'n1', title: 'Old', body: 'Old', parentId: 'f1', createdTime: 1000 };
+	const existing = { id: 'n1', title: 'Old', body: 'Old', parentId: 'f1', createdTime: 1000, updatedTime: 1000 };
+	let callCount = 0;
 	await withServer({
-		itemService: { noteByUserIdAndJopId: async () => existing },
+		itemService: { noteByUserIdAndJopId: async () => { callCount += 1; return callCount === 1 ? existing : { ...existing, title: 'Updated Title', body: 'Updated body', updatedTime: 2000 }; } },
 		itemWriteService: {
 			updateNote: async (_sid, _ex, updates) => { savedUpdates = updates; return { id: 'n1' }; },
 		},
@@ -232,15 +237,69 @@ test('PUT /fragments/editor/:id autosaves and returns status', async () => {
 			path: '/fragments/editor/n1',
 			method: 'PUT',
 			headers: { Cookie: 'sessionId=test-session', 'Content-Type': 'application/x-www-form-urlencoded' },
-			body: 'title=Updated+Title&body=Updated+body',
+			body: 'title=Updated+Title&body=Updated+body&baseUpdatedTime=1000',
 		});
 		assert.equal(res.statusCode, 200);
 		assert.ok(res.body.includes('Saved'));
 		assert.ok(res.body.includes('hx-swap-oob="true"'), 'should include OOB swap');
 		assert.ok(res.body.includes('id="note-item-n1"'), 'should target note list item');
 		assert.ok(res.body.includes('Updated Title'), 'OOB item should have updated title');
+		assert.ok(res.body.includes('name="baseUpdatedTime" value="2000"'));
 		assert.equal(savedUpdates.title, 'Updated Title');
 		assert.equal(savedUpdates.body, 'Updated body');
+	});
+});
+
+test('PUT /fragments/editor/:id returns conflict status fragment when note changed remotely', async () => {
+	await withServer({
+		itemService: { noteByUserIdAndJopId: async () => ({ id: 'n1', title: 'Remote', body: 'Remote body', parentId: 'f1', createdTime: 1000, updatedTime: 2000 }) },
+		itemWriteService: {
+			updateNote: async () => { throw new Error('should not save'); },
+		},
+	}, async port => {
+		const res = await request(port, {
+			path: '/fragments/editor/n1',
+			method: 'PUT',
+			headers: { Cookie: 'sessionId=test-session', 'Content-Type': 'application/x-www-form-urlencoded' },
+			body: 'title=Updated+Title&body=Updated+body&baseUpdatedTime=1000',
+		});
+		assert.equal(res.statusCode, 200);
+		assert.ok(res.body.includes('Conflict'));
+		assert.ok(res.body.includes('Overwrite'));
+		assert.ok(res.body.includes('Create copy'));
+	});
+});
+
+test('PUT /fragments/editor/:id can create copy on conflict', async () => {
+	let createdArgs = null;
+	await withServer({
+		itemService: {
+			noteByUserIdAndJopId: async (_uid, id) => id === 'n-copy' ? { id: 'n-copy', title: 'Updated Title-3', body: 'Updated body', parentId: 'f1', createdTime: 3000, updatedTime: 3000 } : { id: 'n1', title: 'Remote', body: 'Remote body', parentId: 'f1', createdTime: 1000, updatedTime: 2000 },
+			noteHeadersByUserId: async () => [
+				{ id: 'n1', title: 'Updated Title', parentId: 'f1', updatedTime: 1000 },
+				{ id: 'n2', title: 'Updated Title-1', parentId: 'f1', updatedTime: 1000 },
+				{ id: 'n3', title: 'Updated Title-2', parentId: 'f1', updatedTime: 1000 },
+			],
+			foldersByUserId: async () => [{ id: 'f1', title: 'Folder 1', parentId: '' }],
+		},
+		itemWriteService: {
+			createNote: async (_sid, note) => { createdArgs = note; return { id: 'n-copy' }; },
+			updateNote: async () => { throw new Error('should not update'); },
+		},
+	}, async port => {
+		const res = await request(port, {
+			path: '/fragments/editor/n1',
+			method: 'PUT',
+			headers: { Cookie: 'sessionId=test-session', 'Content-Type': 'application/x-www-form-urlencoded' },
+			body: 'title=Updated+Title&body=Updated+body&parentId=f1&baseUpdatedTime=1000&createCopy=1',
+		});
+		assert.equal(res.statusCode, 200);
+		assert.equal(createdArgs.title, 'Updated Title-3');
+		assert.equal(createdArgs.body, 'Updated body');
+		assert.ok(res.body.includes('id="nav-panel" hx-swap-oob="innerHTML"'));
+		assert.ok(res.body.includes('id="note-item-n-copy"'));
+		assert.ok(res.body.includes('class="notelist-item active"'));
+		assert.ok(res.body.includes('hx-put="/fragments/editor/n-copy"'));
 	});
 });
 
@@ -294,6 +353,99 @@ test('POST /fragments/notes selects created note and loads editor', async () => 
 	});
 });
 
+test('DELETE /fragments/notes/:id trashes note and shows trash folder', async () => {
+	let trashed = false;
+	await withServer({
+		itemService: {
+			noteByUserIdAndJopId: async () => ({ id: 'n1', title: 'Note 1', body: 'body', parentId: 'f1', createdTime: 1000, updatedTime: 1000, deletedTime: 0 }),
+			noteHeadersByUserId: async (_uid, options = {}) => options.deleted === 'only' ? [{ id: 'n1', title: 'Note 1', parentId: 'f1', updatedTime: 1000, deletedTime: 2000 }] : [],
+			foldersByUserId: async () => [{ id: 'f1', title: 'Folder 1', parentId: '' }],
+		},
+		itemWriteService: {
+			trashNote: async () => { trashed = true; },
+		},
+	}, async port => {
+		const res = await request(port, {
+			path: '/fragments/notes/n1',
+			method: 'DELETE',
+			headers: { Cookie: 'sessionId=test-session' },
+		});
+		assert.equal(res.statusCode, 200);
+		assert.ok(trashed);
+		assert.ok(res.body.includes('Trash'));
+		assert.ok(res.body.includes('id="editor-panel" hx-swap-oob="innerHTML"'));
+	});
+});
+
+test('DELETE /fragments/notes/:id permanently deletes trashed note', async () => {
+	let deleted = false;
+	await withServer({
+		itemService: {
+			noteByUserIdAndJopId: async (_uid, _id, options = {}) => options.deleted === 'only' ? { id: 'n1', title: 'Note 1', body: 'body', parentId: 'f1', createdTime: 1000, updatedTime: 1000, deletedTime: 2000 } : null,
+			noteHeadersByUserId: async () => [],
+			foldersByUserId: async () => [{ id: 'f1', title: 'Folder 1', parentId: '' }],
+		},
+		itemWriteService: {
+			deleteNote: async () => { deleted = true; },
+		},
+	}, async port => {
+		const res = await request(port, {
+			path: '/fragments/notes/n1',
+			method: 'DELETE',
+			headers: { Cookie: 'sessionId=test-session' },
+		});
+		assert.equal(res.statusCode, 200);
+		assert.ok(deleted);
+	});
+});
+
+test('POST /fragments/notes/:id/restore restores trashed note', async () => {
+	let restoreArgs = null;
+	await withServer({
+		itemService: {
+			noteByUserIdAndJopId: async (_uid, id, options = {}) => {
+				if (options.deleted === 'only') return { id, title: 'Deleted Note', body: 'body', parentId: 'f2', createdTime: 1000, updatedTime: 2000, deletedTime: 2000 };
+				return { id, title: 'Deleted Note', body: 'body', parentId: 'f2', createdTime: 1000, updatedTime: 3000, deletedTime: 0 };
+			},
+			noteHeadersByUserId: async (_uid, options = {}) => options.deleted === 'only' ? [] : [{ id: 'n1', title: 'Deleted Note', parentId: 'f2', updatedTime: 3000, deletedTime: 0 }],
+			foldersByUserId: async () => [{ id: 'f1', title: 'Folder 1', parentId: '' }, { id: 'f2', title: 'Folder 2', parentId: '' }],
+		},
+		itemWriteService: {
+			restoreNote: async (_sid, note, parentId) => { restoreArgs = { note, parentId }; },
+		},
+	}, async port => {
+		const res = await request(port, {
+			path: '/fragments/notes/n1/restore',
+			method: 'POST',
+			headers: { Cookie: 'sessionId=test-session' },
+		});
+		assert.equal(res.statusCode, 200);
+		assert.equal(restoreArgs.parentId, 'f2');
+		assert.ok(res.body.includes('hx-put="/fragments/editor/n1"'));
+	});
+});
+
+test('POST /fragments/trash/empty permanently deletes trashed notes', async () => {
+	const deletedIds = [];
+	await withServer({
+		itemService: {
+			noteHeadersByUserId: async (_uid, options = {}) => options.deleted === 'only' ? [{ id: 'n1', title: 'Deleted Note', parentId: 'f1', updatedTime: 1000, deletedTime: 2000 }] : [],
+			foldersByUserId: async () => [],
+		},
+		itemWriteService: {
+			deleteNote: async (_sid, id) => { deletedIds.push(id); },
+		},
+	}, async port => {
+		const res = await request(port, {
+			path: '/fragments/trash/empty',
+			method: 'POST',
+			headers: { Cookie: 'sessionId=test-session' },
+		});
+		assert.equal(res.statusCode, 200);
+		assert.deepEqual(deletedIds, ['n1']);
+	});
+});
+
 test('GET / returns full SSR page for logged-in user', async () => {
 	await withServer({
 		itemService: {
@@ -306,6 +458,7 @@ test('GET / returns full SSR page for logged-in user', async () => {
 		assert.ok(res.body.includes('<!DOCTYPE html>'));
 		assert.ok(res.body.includes('Joplock'));
 		assert.ok(res.body.includes('My Folder'));
+		assert.ok(res.body.includes('Trash'));
 		assert.ok(res.body.includes('htmx.min.js'));
 		assert.ok(res.body.includes('apple-touch-icon.png'));
 		assert.ok(res.body.includes('apple-touch-startup-image'));

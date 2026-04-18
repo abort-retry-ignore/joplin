@@ -21,6 +21,7 @@ test('mapFolderRow should combine joplin ids and JSON content', () => {
 		parentId: '',
 		title: 'Projects',
 		icon: '📁',
+		deletedTime: 0,
 		createdTime: 100,
 		updatedTime: 200,
 	});

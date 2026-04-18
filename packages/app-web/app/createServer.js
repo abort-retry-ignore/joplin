@@ -114,6 +114,32 @@ const parseBody = async request => {
 	return result;
 };
 
+const nextConflictCopyTitle = (title, existingTitles) => {
+	const source = `${title || 'Untitled note'}`.trim() || 'Untitled note';
+	const base = source.replace(/-\d+$/, '');
+	const escapedBase = base.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+	const re = new RegExp(`^${escapedBase}-(\\d+)$`);
+	let maxSuffix = 0;
+	for (const existingTitle of existingTitles) {
+		const match = `${existingTitle || ''}`.match(re);
+		if (match) maxSuffix = Math.max(maxSuffix, Number(match[1] || 0));
+	}
+	return `${base}-${maxSuffix + 1}`;
+};
+
+const TRASH_FOLDER_ID = 'de1e7ede1e7ede1e7ede1e7ede1e7ede';
+
+const trashFolder = notes => ({
+	id: TRASH_FOLDER_ID,
+	parentId: '',
+	title: 'Trash',
+	noteCount: notes.length,
+	createdTime: 0,
+	updatedTime: 0,
+});
+
+const mapNavNotes = notes => notes.map(note => note.deletedTime ? { ...note, parentId: TRASH_FOLDER_ID } : note);
+
 const serveFile = (response, filePath) => {
 	const extension = path.extname(filePath).toLowerCase();
 	const contentType = contentTypes[extension] || 'application/octet-stream';
@@ -147,6 +173,17 @@ const createServer = options => {
 		const user = await sessionService.userBySessionId(sessionId);
 		if (!user) return { error: 'Invalid or expired session', user: null };
 		return { error: null, user };
+	};
+
+	const navData = async userId => {
+		const [folders, notes, trashedNotes] = await Promise.all([
+			itemService.foldersByUserId(userId),
+			itemService.noteHeadersByUserId(userId),
+			itemService.noteHeadersByUserId(userId, { deleted: 'only' }),
+		]);
+		const allNotes = mapNavNotes(notes.concat(trashedNotes));
+		const allFolders = folders.concat([trashFolder(trashedNotes)]);
+		return { folders: allFolders, notes: allNotes };
 	};
 
 	const upstreamRequestContext = request => ({
@@ -213,10 +250,7 @@ const createServer = options => {
 				if (!title) { sendHtml(response, 400, '<div class="empty-hint">Folder title is required.</div>'); return; }
 
 				await itemWriteService.createFolder(auth.user.sessionId, { title, parentId: body.parentId || '' }, upstreamRequestContext(request));
-				const [folders, notes] = await Promise.all([
-					itemService.foldersByUserId(auth.user.id),
-					itemService.noteHeadersByUserId(auth.user.id),
-				]);
+				const { folders, notes } = await navData(auth.user.id);
 				sendHtml(response, 200, templates.navigationFragment(folders, notes, '', ''));
 			} catch (error) {
 				sendHtml(response, error.statusCode || 500, `<div class="empty-hint">Error: ${templates.escapeHtml(error.message || `${error}`)}</div>`);
@@ -231,10 +265,7 @@ const createServer = options => {
 
 				const folderId = decodeURIComponent(url.pathname.slice('/fragments/folders/'.length));
 				await itemWriteService.deleteFolder(auth.user.sessionId, folderId, upstreamRequestContext(request));
-				const [folders, notes] = await Promise.all([
-					itemService.foldersByUserId(auth.user.id),
-					itemService.noteHeadersByUserId(auth.user.id),
-				]);
+				const { folders, notes } = await navData(auth.user.id);
 				sendHtml(response, 200, templates.navigationFragment(folders, notes, '', ''));
 			} catch (error) {
 				sendHtml(response, error.statusCode || 500, `<div class="empty-hint">Error: ${templates.escapeHtml(error.message || `${error}`)}</div>`);
@@ -249,11 +280,10 @@ const createServer = options => {
 				if (auth.error) { sendHtml(response, 401, '<div class="empty-hint">Session expired.</div>'); return; }
 
 				const query = (url.searchParams.get('q') || '').trim();
-				const [folders, notes] = await Promise.all([
-					itemService.foldersByUserId(auth.user.id),
-					query ? itemService.searchNotes(auth.user.id, query) : itemService.noteHeadersByUserId(auth.user.id),
-				]);
-				sendHtml(response, 200, templates.navigationFragment(folders, notes, '', ''));
+				const data = await navData(auth.user.id);
+				const notes = query ? mapNavNotes(await itemService.searchNotes(auth.user.id, query)) : data.notes;
+				const navFolders = data.folders;
+				sendHtml(response, 200, templates.navigationFragment(navFolders, notes, '', ''));
 			} catch (error) {
 				sendHtml(response, 500, `<div class="empty-hint">Error: ${templates.escapeHtml(error.message || `${error}`)}</div>`);
 			}
@@ -275,12 +305,11 @@ const createServer = options => {
 					parentId,
 				}, upstreamRequestContext(request));
 
-				const [notes, note, folders] = await Promise.all([
-					itemService.noteHeadersByUserId(auth.user.id),
+				const [{ folders, notes }, note] = await Promise.all([
+					navData(auth.user.id),
 					itemService.noteByUserIdAndJopId(auth.user.id, created.id),
-					itemService.foldersByUserId(auth.user.id),
 				]);
-				sendHtml(response, 200, `${templates.navigationFragment(folders, notes, parentId, created.id)}<div id="editor-panel" hx-swap-oob="innerHTML">${templates.editorFragment(note, folders)}</div>`);
+				sendHtml(response, 200, `${templates.navigationFragment(folders, notes, parentId, created.id)}<div id="editor-panel" hx-swap-oob="innerHTML">${templates.editorFragment(note, folders.filter(folder => folder.id !== TRASH_FOLDER_ID))}</div>`);
 			} catch (error) {
 				sendHtml(response, error.statusCode || 500, `<div class="empty-hint">Error: ${templates.escapeHtml(error.message || `${error}`)}</div>`);
 			}
@@ -293,14 +322,63 @@ const createServer = options => {
 				if (auth.error) { sendHtml(response, 401, '<div class="empty-hint">Session expired.</div>'); return; }
 
 				const noteId = decodeURIComponent(url.pathname.slice('/fragments/notes/'.length));
-				const existing = await itemService.noteByUserIdAndJopId(auth.user.id, noteId);
-				const folderId = existing ? existing.parentId : '';
-				await itemWriteService.deleteNote(auth.user.sessionId, noteId, upstreamRequestContext(request));
-				const [folders, notes] = await Promise.all([
+				let existing = await itemService.noteByUserIdAndJopId(auth.user.id, noteId);
+				if (!existing) existing = await itemService.noteByUserIdAndJopId(auth.user.id, noteId, { deleted: 'only' });
+				if (!existing) { sendHtml(response, 404, '<div class="empty-hint">Note not found.</div>'); return; }
+				if (existing.deletedTime) {
+					await itemWriteService.deleteNote(auth.user.sessionId, noteId, upstreamRequestContext(request));
+				} else {
+					await itemWriteService.trashNote(auth.user.sessionId, existing, upstreamRequestContext(request));
+				}
+				const { folders, notes } = await navData(auth.user.id);
+				sendHtml(response, 200, `${templates.navigationFragment(folders, notes, TRASH_FOLDER_ID, '')}<div id="editor-panel" hx-swap-oob="innerHTML"><div class="editor-empty">Select a note</div></div>`);
+			} catch (error) {
+				sendHtml(response, error.statusCode || 500, `<div class="empty-hint">Error: ${templates.escapeHtml(error.message || `${error}`)}</div>`);
+			}
+			return;
+		}
+
+		if (url.pathname.startsWith('/fragments/notes/') && url.pathname.endsWith('/restore') && request.method === 'POST') {
+			try {
+				const auth = await authenticatedUser(request);
+				if (auth.error) { sendHtml(response, 401, '<div class="empty-hint">Session expired.</div>'); return; }
+				const noteId = decodeURIComponent(url.pathname.slice('/fragments/notes/'.length, -'/restore'.length));
+				const [existing, folders] = await Promise.all([
+					itemService.noteByUserIdAndJopId(auth.user.id, noteId, { deleted: 'only' }),
 					itemService.foldersByUserId(auth.user.id),
-					itemService.noteHeadersByUserId(auth.user.id),
 				]);
-				sendHtml(response, 200, `${templates.navigationFragment(folders, notes, folderId, '')}<div id="editor-panel" hx-swap-oob="innerHTML"><div class="editor-empty">Select a note</div></div>`);
+				if (!existing) { sendHtml(response, 404, '<div class="empty-hint">Note not found.</div>'); return; }
+				let restoreParentId = existing.parentId;
+				if (!folders.find(folder => folder.id === restoreParentId)) {
+					if (folders.length) {
+						restoreParentId = folders[0].id;
+					} else {
+						const createdFolder = await itemWriteService.createFolder(auth.user.sessionId, { title: 'Restored items', parentId: '' }, upstreamRequestContext(request));
+						restoreParentId = createdFolder.id;
+					}
+				}
+				await itemWriteService.restoreNote(auth.user.sessionId, existing, restoreParentId, upstreamRequestContext(request));
+				const [{ folders: navFolders, notes }, restoredNote] = await Promise.all([
+					navData(auth.user.id),
+					itemService.noteByUserIdAndJopId(auth.user.id, noteId),
+				]);
+				sendHtml(response, 200, `${templates.navigationFragment(navFolders, notes, restoreParentId, noteId)}<div id="editor-panel" hx-swap-oob="innerHTML">${templates.editorFragment(restoredNote, navFolders.filter(folder => folder.id !== TRASH_FOLDER_ID))}</div>`);
+			} catch (error) {
+				sendHtml(response, error.statusCode || 500, `<div class="empty-hint">Error: ${templates.escapeHtml(error.message || `${error}`)}</div>`);
+			}
+			return;
+		}
+
+		if (url.pathname === '/fragments/trash/empty' && request.method === 'POST') {
+			try {
+				const auth = await authenticatedUser(request);
+				if (auth.error) { sendHtml(response, 401, '<div class="empty-hint">Session expired.</div>'); return; }
+				const trashedNotes = await itemService.noteHeadersByUserId(auth.user.id, { deleted: 'only' });
+				for (const note of trashedNotes) {
+					await itemWriteService.deleteNote(auth.user.sessionId, note.id, upstreamRequestContext(request));
+				}
+				const { folders, notes } = await navData(auth.user.id);
+				sendHtml(response, 200, `${templates.navigationFragment(folders, notes, '', '')}<div id="editor-panel" hx-swap-oob="innerHTML"><div class="editor-empty">Select a note</div></div>`);
 			} catch (error) {
 				sendHtml(response, error.statusCode || 500, `<div class="empty-hint">Error: ${templates.escapeHtml(error.message || `${error}`)}</div>`);
 			}
@@ -420,7 +498,7 @@ const createServer = options => {
 
 				const noteId = decodeURIComponent(url.pathname.slice('/fragments/editor/'.length));
 				const [note, folders] = await Promise.all([
-					itemService.noteByUserIdAndJopId(auth.user.id, noteId),
+					itemService.noteByUserIdAndJopId(auth.user.id, noteId, { deleted: 'all' }),
 					itemService.foldersByUserId(auth.user.id),
 				]);
 				if (!note) { sendHtml(response, 404, '<div class="editor-empty">Note not found.</div>'); return; }
@@ -437,26 +515,61 @@ const createServer = options => {
 				if (auth.error) { sendHtml(response, 401, '<span class="autosave-error">Session expired</span>'); return; }
 
 				const noteId = decodeURIComponent(url.pathname.slice('/fragments/editor/'.length));
-				const existing = await itemService.noteByUserIdAndJopId(auth.user.id, noteId);
-				if (!existing) { sendHtml(response, 404, '<span class="autosave-error">Note not found</span>'); return; }
+				let existing = await itemService.noteByUserIdAndJopId(auth.user.id, noteId);
+				if (!existing) existing = await itemService.noteByUserIdAndJopId(auth.user.id, noteId, { deleted: 'only' });
 
 				const body = await parseBody(request);
+				const baseUpdatedTime = Number(body.baseUpdatedTime || 0);
+				const forceSave = `${body.forceSave || ''}` === '1';
+				const createCopy = `${body.createCopy || ''}` === '1';
+				if (!existing) {
+					const created = await itemWriteService.createNote(auth.user.sessionId, {
+						title: `${body.title || ''}`.trim() || 'Untitled note',
+						body: `${body.body || ''}`,
+						parentId: `${body.parentId || ''}`,
+					}, upstreamRequestContext(request));
+					const [{ folders, notes }, createdNote] = await Promise.all([
+						navData(auth.user.id),
+						itemService.noteByUserIdAndJopId(auth.user.id, created.id),
+					]);
+					sendHtml(response, 200, `${templates.autosaveStatusFragment()}<div id="nav-panel" hx-swap-oob="innerHTML">${templates.navigationFragment(folders, notes, `${body.parentId || ''}`, created.id)}</div><div id="editor-panel" hx-swap-oob="innerHTML">${templates.editorFragment(createdNote, folders.filter(folder => folder.id !== TRASH_FOLDER_ID))}</div>`);
+					return;
+				}
+				if (createCopy) {
+					const [{ folders, notes }] = await Promise.all([
+						navData(auth.user.id),
+					]);
+					const copyTitle = nextConflictCopyTitle(body.title, notes.map(note => note.title));
+					const created = await itemWriteService.createNote(auth.user.sessionId, {
+						title: copyTitle,
+						body: body.body,
+						parentId: body.parentId || existing.parentId,
+					}, upstreamRequestContext(request));
+					const createdNote = await itemService.noteByUserIdAndJopId(auth.user.id, created.id);
+					sendHtml(response, 200, `${templates.autosaveStatusFragment()}<div id="nav-panel" hx-swap-oob="innerHTML">${templates.navigationFragment(folders, notes.concat([{ id: created.id, title: copyTitle, parentId: body.parentId || existing.parentId, updatedTime: createdNote ? createdNote.updatedTime : 0, deletedTime: 0 }]), body.parentId || existing.parentId, created.id)}</div><div id="editor-panel" hx-swap-oob="innerHTML">${templates.editorFragment(createdNote, folders.filter(folder => folder.id !== TRASH_FOLDER_ID))}</div>`);
+					return;
+				}
+				if (!forceSave && baseUpdatedTime && Number(existing.updatedTime || 0) !== baseUpdatedTime) {
+					sendHtml(response, 200, templates.autosaveConflictFragment(noteId));
+					return;
+				}
 				await itemWriteService.updateNote(auth.user.sessionId, existing, {
 					title: body.title,
 					body: body.body,
 					parentId: body.parentId,
 				}, upstreamRequestContext(request));
+				const refreshed = await itemService.noteByUserIdAndJopId(auth.user.id, noteId);
 
 				// Build OOB swap to update the note list item sidebar
 				const updatedNote = {
-					...existing,
-					title: body.title !== undefined ? body.title : existing.title,
-					bodyPreview: body.body !== undefined ? `${body.body}`.slice(0, 100) : existing.bodyPreview,
+					...(refreshed || existing),
+					title: body.title !== undefined ? body.title : (refreshed ? refreshed.title : existing.title),
+					bodyPreview: body.body !== undefined ? `${body.body}`.slice(0, 100) : (refreshed ? refreshed.bodyPreview : existing.bodyPreview),
 				};
 				const oobItem = templates.noteListItem(updatedNote, noteId)
 					.replace(/^<button /, '<button hx-swap-oob="true" ');
 
-				sendHtml(response, 200, templates.autosaveStatusFragment() + oobItem);
+				sendHtml(response, 200, templates.autosaveStatusFragment() + oobItem + templates.noteSyncStateFragment(refreshed || existing).replace('<span id="editor-sync-state">', '<span id="editor-sync-state" hx-swap-oob="outerHTML">') + templates.noteMetaFragment(refreshed || existing).replace('<span id="note-meta"', '<span id="note-meta" hx-swap-oob="outerHTML"'));
 			} catch (error) {
 				sendHtml(response, error.statusCode || 500, '<span class="autosave-error">Save failed</span>');
 			}
@@ -718,10 +831,7 @@ const createServer = options => {
 					return;
 				}
 
-				const [folders, notes] = await Promise.all([
-					itemService.foldersByUserId(auth.user.id),
-					itemService.noteHeadersByUserId(auth.user.id),
-				]);
+				const { folders, notes } = await navData(auth.user.id);
 				const selectedFolderId = '';
 
 				sendHtml(response, 200, templates.layoutPage({
@@ -751,8 +861,7 @@ const createServer = options => {
 				response.end();
 				return;
 			}
-			const folders = await itemService.foldersByUserId(auth.user.id);
-			const notes = await itemService.noteHeadersByUserId(auth.user.id);
+			const { folders, notes } = await navData(auth.user.id);
 			sendHtml(response, 200, templates.layoutPage({
 				user: auth.user,
 				navContent: templates.navigationFragment(folders, notes, '', ''),

@@ -93,6 +93,12 @@ const noteListFragment = (notes, selectedNoteId, folderId) => {
 	return `${header}<div class="notelist-items" id="notelist-items">${items}</div>`;
 };
 
+const noteSyncStateFragment = note => `<span id="editor-sync-state"><input type="hidden" name="baseUpdatedTime" value="${escapeHtml(note.updatedTime || 0)}" /><input type="hidden" name="forceSave" value="" /><input type="hidden" name="createCopy" value="" /></span>`;
+
+const noteMetaFragment = note => `<span id="note-meta" class="note-meta" data-created-time="${escapeHtml(note.createdTime || 0)}" data-updated-time="${escapeHtml(note.updatedTime || 0)}"></span>`;
+
+const autosaveConflictFragment = noteId => `<span class="autosave-conflict"><span class="autosave-error">Conflict</span><button type="button" class="btn btn-sm" hx-put="/fragments/editor/${encodeURIComponent(noteId)}" hx-include="#note-editor-form" hx-target="#autosave-status" hx-swap="innerHTML" hx-vals='{"forceSave":"1"}' hx-on:click="if(getPV())syncPV()">Overwrite</button><button type="button" class="btn btn-sm" hx-put="/fragments/editor/${encodeURIComponent(noteId)}" hx-include="#note-editor-form" hx-target="#autosave-status" hx-swap="innerHTML" hx-vals='{"createCopy":"1"}' hx-on:click="if(getPV())syncPV()">Create copy</button></span>`;
+
 const navigationFragment = (folders, notes, selectedFolderId, selectedNoteId) => {
 	const notesByFolder = new Map();
 	for (const note of notes || []) {
@@ -105,18 +111,24 @@ const navigationFragment = (folders, notes, selectedFolderId, selectedNoteId) =>
 		const folderNotes = notesByFolder.get(folder.id) || [];
 		const isOpen = folder.id === selectedFolderId || folderNotes.some(n => n.id === selectedNoteId);
 		const count = folderNotes.length;
+		const isTrash = folder.id === 'de1e7ede1e7ede1e7ede1e7ede1e7ede';
 		return `<div class="nav-folder collapsed" data-folder-id="${escapeHtml(folder.id)}" data-selected="${isOpen ? '1' : ''}">
 			<div class="nav-folder-row" onclick="toggleNavFolder('${escapeHtml(folder.id)}')">
 				<button type="button" class="nav-folder-toggle" tabindex="-1">&#9656;</button>
-				<span class="sidebar-item-icon">&#128193;</span>
+				<span class="sidebar-item-icon">${isTrash ? '&#128465;' : '&#128193;'}</span>
 				<span class="nav-folder-title">${escapeHtml(folder.title || 'Untitled')}</span>
 				<span class="sidebar-item-count">${count || ''}</span>
-				<button type="button" class="btn-icon-sm nav-folder-add" title="New note"
+				${isTrash ? `<button type="button" class="btn-icon-sm nav-folder-add" title="Empty trash"
+					hx-post="/fragments/trash/empty"
+					hx-target="#nav-panel"
+					hx-swap="innerHTML"
+					hx-confirm="Empty trash permanently?"
+					hx-on:click="event.stopPropagation()">&#10005;</button>` : `<button type="button" class="btn-icon-sm nav-folder-add" title="New note"
 					hx-post="/fragments/notes"
 					hx-vals='${escapeHtml(JSON.stringify({ parentId: folder.id }))}'
 					hx-target="#nav-panel"
 					hx-swap="innerHTML"
-					hx-on:click="event.stopPropagation()">+</button>
+					hx-on:click="event.stopPropagation()">+</button>`}
 			</div>
 			<div class="nav-folder-notes">
 				${folderNotes.length ? folderNotes.map(n => noteListItem(n, selectedNoteId)).join('') : '<div class="empty-hint nav-empty">No notes</div>'}
@@ -151,22 +163,28 @@ const editorFragment = (note, folders) => {
 		hx-target="#autosave-status"
 		hx-swap="innerHTML"
 		hx-indicator="#autosave-indicator">
+		${noteMetaFragment(note).replace('<span id="note-meta"', '<span id="note-meta" hx-swap-oob="outerHTML"')}
 		<div class="editor-titlebar">
 			<select name="parentId" class="editor-folder-select" title="Move to folder">${folderOptions}</select>
 			<span class="editor-folder-arrow">&#9656;</span>
+			${noteSyncStateFragment(note)}
 			<input type="hidden" name="title" class="editor-title-hidden"
 				value="${escapeHtml(note.title || '')}" />
 			<div class="editor-title" contenteditable="true"
 				data-placeholder="Note title">${renderInlineMarkdown(escapeHtml(note.title || ''))}</div>
 			<span id="autosave-status"></span>
 			<span id="autosave-indicator" class="htmx-indicator">Saving...</span>
+			${note.deletedTime ? `<button type="button" class="btn btn-sm" title="Restore from trash"
+				hx-post="/fragments/notes/${encodeURIComponent(note.id)}/restore"
+				hx-target="#nav-panel"
+				hx-swap="innerHTML">Restore</button>` : ''}
 			<button type="button" class="btn btn-icon" title="Edit" id="preview-toggle" onclick="togglePreview()">&#9998;</button>
 			<button type="button" class="btn btn-icon" title="Toggle clean markdown (hide &lt;br&gt; tags)" id="clean-md-toggle" onclick="toggleCleanMd()" style="width:auto;padding:0 6px;font-size:11px;display:none">md</button>
 			<button type="button" class="btn btn-icon btn-danger" title="Delete"
 				hx-delete="/fragments/notes/${encodeURIComponent(note.id)}"
 				hx-target="#nav-panel"
 				hx-swap="innerHTML"
-				hx-confirm="Delete this note?">&#128465;</button>
+				hx-confirm="${note.deletedTime ? 'Permanently delete this note?' : 'Move this note to trash?'}">&#128465;</button>
 		</div>
 		<div class="editor-toolbar" id="editor-toolbar">
 			<button type="button" class="tb" title="Bold (Ctrl+B)" onclick="wrapSel('**','**')"><b>B</b></button>
@@ -388,6 +406,7 @@ const layoutPage = (options = {}) => {
 	</div>
 	<div class="app-statusbar">
 		<span class="status-user">${escapeHtml(user.fullName || user.email)}</span>
+		${noteMetaFragment({ createdTime: 0, updatedTime: 0 })}
 		<span class="status-spacer"></span>
 		<select class="theme-picker" onchange="setTheme(this.value)">
 			<option value="matrix">Matrix</option>
@@ -407,6 +426,8 @@ const layoutPage = (options = {}) => {
 	function setMobileNav(open){var nav=document.getElementById('nav-panel');var bd=document.getElementById('mobile-nav-backdrop');if(!nav||!bd)return;nav.classList.toggle('open',open);bd.classList.toggle('open',open);document.body.classList.toggle('mobile-nav-open',open)}
 	function toggleMobileNav(){var nav=document.getElementById('nav-panel');if(!nav)return;setMobileNav(!nav.classList.contains('open'))}
 	function closeMobileNav(){setMobileNav(false)}
+	function markEdited(){var s=document.getElementById('autosave-status');if(s)s.innerHTML='<span class="autosave-edited">Edited</span>'}
+	function renderNoteMeta(){var meta=document.getElementById('note-meta');if(!meta)return;var c=Number(meta.getAttribute('data-created-time')||0),u=Number(meta.getAttribute('data-updated-time')||0);if(!c&&!u){meta.textContent='';return}var months=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];var fmt=function(ts){if(!ts)return '';var d=new Date(ts);return String(d.getDate()).padStart(2,'0')+'-'+months[d.getMonth()]+'-'+String(d.getFullYear()).slice(-2)};meta.textContent='Created '+fmt(c)+' | Edited '+fmt(u)}
 	function navFolderState(){try{return JSON.parse(localStorage.getItem('joplock-nav-folders')||'{}')}catch(e){return {}}}
 	function saveNavFolderState(s){localStorage.setItem('joplock-nav-folders',JSON.stringify(s))}
 	function toggleNavFolder(id,force){var el=document.querySelector('.nav-folder[data-folder-id="'+id.replace(/"/g,'\\"')+'"]');if(!el)return;var collapsed=force===undefined?!el.classList.contains('collapsed'):!force;el.classList.toggle('collapsed',collapsed);var s=navFolderState();s[id]=collapsed?'0':'1';saveNavFolderState(s)}
@@ -476,7 +497,7 @@ const layoutPage = (options = {}) => {
 		pv.addEventListener('keydown',function(e){if(e.key==='Enter'){var sel=window.getSelection();if(!sel.rangeCount)return;var range=sel.getRangeAt(0);var node=range.startContainer;var el=node.nodeType===3?node.parentElement:node;var cb=el&&el.closest?el.closest('.md-checkbox'):null;if(!cb&&node.nodeType===1&&range.startOffset>0){var prev=node.childNodes[range.startOffset-1];if(prev&&prev.nodeType===1&&prev.classList&&prev.classList.contains('md-checkbox'))cb=prev}if(!cb)return;e.preventDefault();var label=(cb.textContent||'').replace(/^[\\u2610\\u2611][\\u00a0 ]*/,'').replace(/\\u00a0|\\s/g,'');if(!label){var para=document.createElement('p');para.innerHTML='<br>';if(cb.parentNode)cb.parentNode.replaceChild(para,cb);var rp=document.createRange();rp.setStart(para,0);rp.collapse(true);sel.removeAllRanges();sel.addRange(rp);para.scrollIntoView({block:'nearest'});syncPV();return}var neo=document.createElement('div');neo.className='md-checkbox';var tn=document.createTextNode('\u2610\u00a0');neo.appendChild(tn);cb.parentNode.insertBefore(neo,cb.nextSibling);var r=document.createRange();r.setStart(tn,2);r.collapse(true);sel.removeAllRanges();sel.addRange(r);neo.scrollIntoView({block:'nearest'});syncPV();return}});
 		// Scroll to keep cursor visible while typing
 		pv.addEventListener('input',function(){var sel=window.getSelection();if(sel&&sel.rangeCount){var r=sel.getRangeAt(0).getBoundingClientRect();var pr=pv.getBoundingClientRect();if(r.bottom>pr.bottom-8)pv.scrollTop+=r.bottom-pr.bottom+24}})}
-	function initEditorPanel(){var form=document.getElementById('note-editor-form');if(!form||form.dataset.editorInit)return;form.dataset.editorInit='1';if(window.innerWidth<=768)closeMobileNav();initAutoTitle();var ta=getTA();if(ta){ta.addEventListener('input',function(){autoTitle()});if(_cleanMd)ta.value=cleanForDisplay(ta.value)}var pv=document.getElementById('note-preview');if(pv&&pv.style.display!=='none'){activatePV(pv)}var btn=document.getElementById('clean-md-toggle');if(btn){btn.style.display=pv&&pv.style.display!=='none'?'none':'inline-flex';if(_cleanMd)btn.classList.add('active')}}
+	function initEditorPanel(){var form=document.getElementById('note-editor-form');if(!form||form.dataset.editorInit)return;form.dataset.editorInit='1';if(window.innerWidth<=768)closeMobileNav();var status=document.getElementById('autosave-status');if(status&&!status.innerHTML)status.innerHTML='<span class="autosave-ok">Saved</span>';form.addEventListener('input',function(){markEdited()});initAutoTitle();renderNoteMeta();var ta=getTA();if(ta){ta.addEventListener('input',function(){autoTitle()});if(_cleanMd)ta.value=cleanForDisplay(ta.value)}var pv=document.getElementById('note-preview');if(pv&&pv.style.display!=='none'){activatePV(pv)}var btn=document.getElementById('clean-md-toggle');if(btn){btn.style.display=pv&&pv.style.display!=='none'?'none':'inline-flex';if(_cleanMd)btn.classList.add('active')}}
 	function initNavPanel(){var state=navFolderState();document.querySelectorAll('.nav-folder').forEach(function(el){var id=el.getAttribute('data-folder-id');var selected=el.getAttribute('data-selected')==='1';var open=state[id]===true||state[id]==='1'||state[id]===1;if(state[id]===undefined)open=false;if(selected)open=true;el.classList.toggle('collapsed',!open)})}
 	document.body.addEventListener('htmx:afterSettle',function(){initNavPanel();initEditorPanel()});
 	window.addEventListener('load',function(){initNavPanel();initEditorPanel()});
@@ -495,8 +516,11 @@ module.exports = {
 	navigationFragment,
 	noteListItem,
 	noteListFragment,
+	noteSyncStateFragment,
+	noteMetaFragment,
 	editorFragment,
 	autosaveStatusFragment,
+	autosaveConflictFragment,
 	renderInlineMarkdown,
 	renderMarkdown,
 	searchResultsFragment,

@@ -18,6 +18,7 @@ const serializeNote = note => {
 	const noteId = note.id || itemId('1');
 	const parentId = note.parentId || '';
 	const createdTime = note.createdTime || now;
+	const deletedTime = note.deletedTime || 0;
 
 	return {
 		id: noteId,
@@ -53,7 +54,7 @@ share_id:
 conflict_original_id: 
 master_key_id: 
 user_data: 
-deleted_time: 0
+deleted_time: ${deletedTime}
 type_: 1`,
 	};
 };
@@ -248,6 +249,7 @@ const createItemWriteService = options => {
 				body: updates.body !== undefined ? updates.body : existingNote.body,
 				parentId: updates.parentId !== undefined ? updates.parentId : existingNote.parentId,
 				createdTime: existingNote.createdTime,
+				deletedTime: updates.deletedTime !== undefined ? updates.deletedTime : existingNote.deletedTime,
 			});
 			await putSerializedItem(sessionId, serialized, requestContext);
 			return { id: serialized.id };
@@ -255,6 +257,14 @@ const createItemWriteService = options => {
 
 		async deleteNote(sessionId, noteId, requestContext) {
 			await deleteItem(sessionId, notePath(noteId), requestContext);
+		},
+
+		async trashNote(sessionId, existingNote, requestContext) {
+			return this.updateNote(sessionId, existingNote, { deletedTime: Date.now() }, requestContext);
+		},
+
+		async restoreNote(sessionId, existingNote, restoreParentId, requestContext) {
+			return this.updateNote(sessionId, existingNote, { deletedTime: 0, parentId: restoreParentId }, requestContext);
 		},
 
 		async createResource(sessionId, resource, binaryBuffer, requestContext) {
