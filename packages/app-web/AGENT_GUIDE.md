@@ -27,7 +27,7 @@ Use this guide when working on `packages/app-web` and its integration with stock
 - **Client**: htmx for declarative fragment swaps, zero client-side state/framework
 - **Editor**: contenteditable WYSIWYG preview (default mode), plain textarea for raw markdown editing
 - **Autosave**: `hx-trigger="input changed delay:1s"` — fires PUT 1 second after user stops typing
-- **Markdown**: server-side `renderMarkdown()` for preview, client-side `htmlToMarkdown()` for DOM-to-markdown conversion
+- **Markdown**: server-side `renderMarkdown()` for preview, client-side Turndown `htmlToMarkdown()` for DOM-to-markdown conversion
 - **Auth**: reuses Joplin Server `sessionId` cookie (path `/`, TTL 12h)
 - **DB access**: reads directly from Joplin Server's `items` table; writes go through stock Joplin Server API (`PUT /api/items/...`) with `x-api-auth` header
 - **Static assets**: htmx served as vendored file (`public/htmx.min.js`), no npm/bundler dependency
@@ -56,7 +56,9 @@ Use this guide when working on `packages/app-web` and its integration with stock
 - Toolbar works in both modes (execCommand in preview, text insertion in textarea)
 - Image resize via mouse drag in preview mode
 - Auto-title: first non-empty line of body populates the title (unless manually edited)
-- Title field is contenteditable div with inline markdown rendering (bold, italic, strikethrough, code)
+- Title field is contenteditable div with inline markdown rendering (bold, italic, strikethrough, underline, code)
+- Blank lines are stored as `<br>` in markdown; the sticky `md` toggle hides them in edit mode via `cleanForDisplay()` / `dirtyForSave()`
+- Checkbox rows in preview are `div.md-checkbox`; click only the icon area to toggle, label text should remain editable/selectable
 
 ## Core Rules
 
@@ -100,10 +102,10 @@ Owns:
 - `app/templates.js` — all HTML rendering and inline client-side JS:
   - `layoutPage()` — full SSR page shell
   - `folderListFragment()`, `noteListFragment()`, `editorFragment()` — htmx fragment renderers
-  - `renderMarkdown()` — server-side markdown-to-HTML (headings, bold, italic, strikethrough, code, code blocks, blockquotes, lists, checkboxes, images, links, blank line preservation)
-  - `renderInlineMarkdown()` — inline-only markdown for titles (bold, italic, strikethrough, code)
-  - `htmlToMarkdown()` — client-side DOM-to-markdown converter (inline in template)
-  - `togglePreview()`, `syncPV()`, `syncTitle()` — editor mode switching
+  - `renderMarkdown()` — server-side markdown-to-HTML (headings, bold, italic, strikethrough, underline, code, code blocks, blockquotes, unordered/ordered lists, checkboxes, images, links, blank line preservation)
+  - `renderInlineMarkdown()` — inline-only markdown for titles (bold, italic, strikethrough, underline, code)
+  - `htmlToMarkdown()` / `getTurndown()` — client-side DOM-to-markdown converter and Turndown rules (checkboxes, underline, `<strike>`, empty blocks, Joplin resources)
+  - `togglePreview()`, `syncPV()`, `syncTitle()`, `activatePV()` — editor mode switching and contenteditable wiring
   - `initImgResize()` — mouse drag image resize
   - `autoTitle()`, `initAutoTitle()` — auto-populate title from first line
   - `wrapSel()`, `insertPfx()`, `insertTxt()` — toolbar actions
@@ -151,6 +153,13 @@ Owns:
 ### Blank line preservation
 Extra blank lines (3+ consecutive newlines) are preserved as `<div class="md-blank-line">` in preview. The `htmlToMarkdown` converter turns each back into `\n`. The `.join('')` on rendered blocks prevents inter-element text nodes that caused expansion bugs. Whitespace-only text nodes containing `\n` are skipped in `htmlToMarkdown` as defense-in-depth.
 
+### Contenteditable checkbox behavior
+Checkboxes in preview use a leading icon text node (`☐`/`☑`) plus `\u00a0` so the caret lands after the icon. This has a few gotchas:
+- Empty-checkbox detection must strip both normal spaces and `\u00a0`, not just `.trim()`
+- Enter handling must also detect the caret when the selection sits in the parent container immediately after a checkbox node
+- Click handling must only toggle when the click lands on the icon area; clicking label text should place the caret normally
+- `activatePV()` can run repeatedly after preview/edit toggles, so event listeners must be guarded with `pv.dataset.pvInit` to avoid duplicate handlers
+
 ### Preview-default editor
 Notes open in contenteditable preview mode. This avoids showing raw markdown to users who just want to read/browse. The pencil icon switches to raw textarea for advanced editing.
 
@@ -196,11 +205,13 @@ Additional:
 - avoid cross-app churn in `packages/lib` unless necessary
 - if changing shared code, note impact on desktop/mobile/CLI/server
 - inline JS in templates must double-escape regex chars (`\\s`, `\\n`) since it's inside template literals
+- `\u00a0` and template-literal escaping have both caused editor regressions; be careful when changing checkbox text handling
 
 ## Verification
 
-- Run tests: `node --test packages/app-web/tests/*.test.js` (30 tests, all should pass)
+- Run tests: `node --test packages/app-web/tests/*.test.js` (31 tests, all should pass)
 - Rebuild: `docker compose -f docker-compose.app-web.yml --env-file .env.app-web up -d --build app-web`
+- Fast deploy: `npm --prefix packages/app-web run deploy:docker`
 - Live: `https://joplinweb.021407.xyz`
 - Default Joplin Server admin: `admin@localhost` / `admin`
 
@@ -218,21 +229,23 @@ Additional:
 - Auto-title from first line
 - Inline markdown rendering in titles and note list
 - Blank line preservation (stable round-trip)
+- Underline support (`++text++`) in renderers and Turndown
+- Ordered list rendering
+- Preview checkbox toggle and Enter behavior fixes
 - 3 themes with persistence
 - Autosave (1s debounce)
 - Folder selector (move notes between folders)
 - Keyboard shortcuts (Ctrl+B, Ctrl+I)
 - PWA manifest and service worker
-- 30 passing tests
+- 31 passing tests
 - Live deployment
 
 ### Git History
 - Branch: `joplock-dev`
 - Commits: `d57f04269` through `a7bc7e2cd` (9 commits)
-- Uncommitted: WYSIWYG editing, image resize, auto-title, inline markdown titles, preview-default, collapsible sidebar, blank line bug fix
+- Uncommitted: none in `packages/app-web` after committing current preview/editor fixes
 
 ### Next
-- Commit all uncommitted work
 - Consider split-pane editor (textarea + live preview side by side) as alternative to contenteditable WYSIWYG
 - Polish mobile/responsive layout
 - Note sorting options
