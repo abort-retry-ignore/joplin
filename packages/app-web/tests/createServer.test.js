@@ -56,6 +56,7 @@ const defaultMocks = (overrides = {}) => ({
 		foldersByUserId: async () => [],
 		folderByUserIdAndJopId: async () => null,
 		notesByUserId: async () => [],
+		noteHeadersByUserId: async () => [],
 		noteByUserIdAndJopId: async () => null,
 		searchNotes: async () => [],
 		resourceBlobByUserId: async () => null,
@@ -183,17 +184,21 @@ test('PUT /api/web/notes/:id returns 404 for missing note', async () => {
 
 // --- htmx fragment tests ---
 
-test('GET /fragments/notes returns HTML note list', async () => {
+test('GET /fragments/nav returns HTML folder-note tree', async () => {
 	await withServer({
 		itemService: {
-			notesByUserId: async () => [
-				{ id: 'n1', title: 'Note 1', body: 'Body', bodyPreview: 'Body', parentId: 'f1', isTodo: false, todoCompleted: 0, createdTime: 0, updatedTime: 0 },
+			foldersByUserId: async () => [
+				{ id: 'f1', title: 'Folder 1', parentId: '', createdTime: 0, updatedTime: 0 },
+			],
+			noteHeadersByUserId: async () => [
+				{ id: 'n1', title: 'Note 1', parentId: 'f1', updatedTime: 0 },
 			],
 		},
 	}, async port => {
-		const res = await request(port, { path: '/fragments/notes?folderId=f1' });
+		const res = await request(port, { path: '/fragments/nav' });
 		assert.equal(res.statusCode, 200);
 		assert.ok(res.headers['content-type'].includes('text/html'));
+		assert.ok(res.body.includes('Folder 1'));
 		assert.ok(res.body.includes('Note 1'));
 		assert.ok(res.body.includes('hx-get="/fragments/editor/n1"'));
 	});
@@ -267,9 +272,9 @@ test('POST /fragments/notes selects created note and loads editor', async () => 
 			createNote: async () => ({ id: 'n-new' }),
 		},
 		itemService: {
-			notesByUserId: async () => [
-				{ id: 'n-old', title: 'Old Note', body: '', bodyPreview: '', parentId: 'f1', isTodo: false, todoCompleted: 0, createdTime: 0, updatedTime: 0 },
-				{ id: 'n-new', title: 'Untitled note', body: '', bodyPreview: '', parentId: 'f1', isTodo: false, todoCompleted: 0, createdTime: 0, updatedTime: 0 },
+			noteHeadersByUserId: async () => [
+				{ id: 'n-old', title: 'Old Note', parentId: 'f1', updatedTime: 0 },
+				{ id: 'n-new', title: 'Untitled note', parentId: 'f1', updatedTime: 0 },
 			],
 			noteByUserIdAndJopId: async (_uid, id) => ({ id, title: 'Untitled note', body: '', parentId: 'f1', updatedTime: Date.now() }),
 			foldersByUserId: async () => [{ id: 'f1', title: 'Folder 1', parentId: '' }],
@@ -293,7 +298,7 @@ test('GET / returns full SSR page for logged-in user', async () => {
 	await withServer({
 		itemService: {
 			foldersByUserId: async () => [{ id: 'f1', title: 'My Folder', parentId: '' }],
-			notesByUserId: async () => [],
+			noteHeadersByUserId: async () => [],
 		},
 	}, async port => {
 		const res = await request(port, { path: '/' });

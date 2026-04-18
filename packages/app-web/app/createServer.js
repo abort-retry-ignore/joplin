@@ -213,8 +213,11 @@ const createServer = options => {
 				if (!title) { sendHtml(response, 400, '<div class="empty-hint">Folder title is required.</div>'); return; }
 
 				await itemWriteService.createFolder(auth.user.sessionId, { title, parentId: body.parentId || '' }, upstreamRequestContext(request));
-				const folders = await itemService.foldersByUserId(auth.user.id);
-				sendHtml(response, 200, templates.folderListFragment(folders, ''));
+				const [folders, notes] = await Promise.all([
+					itemService.foldersByUserId(auth.user.id),
+					itemService.noteHeadersByUserId(auth.user.id),
+				]);
+				sendHtml(response, 200, templates.navigationFragment(folders, notes, '', ''));
 			} catch (error) {
 				sendHtml(response, error.statusCode || 500, `<div class="empty-hint">Error: ${templates.escapeHtml(error.message || `${error}`)}</div>`);
 			}
@@ -228,23 +231,29 @@ const createServer = options => {
 
 				const folderId = decodeURIComponent(url.pathname.slice('/fragments/folders/'.length));
 				await itemWriteService.deleteFolder(auth.user.sessionId, folderId, upstreamRequestContext(request));
-				const folders = await itemService.foldersByUserId(auth.user.id);
-				sendHtml(response, 200, templates.folderListFragment(folders, ''));
+				const [folders, notes] = await Promise.all([
+					itemService.foldersByUserId(auth.user.id),
+					itemService.noteHeadersByUserId(auth.user.id),
+				]);
+				sendHtml(response, 200, templates.navigationFragment(folders, notes, '', ''));
 			} catch (error) {
 				sendHtml(response, error.statusCode || 500, `<div class="empty-hint">Error: ${templates.escapeHtml(error.message || `${error}`)}</div>`);
 			}
 			return;
 		}
 
-		// --- htmx fragment: note list ---
-		if (url.pathname === '/fragments/notes' && request.method === 'GET') {
+		// --- htmx fragment: navigation tree ---
+		if (url.pathname === '/fragments/nav' && request.method === 'GET') {
 			try {
 				const auth = await authenticatedUser(request);
 				if (auth.error) { sendHtml(response, 401, '<div class="empty-hint">Session expired.</div>'); return; }
 
-				const folderId = url.searchParams.get('folderId') || '';
-				const notes = folderId ? await itemService.notesByUserId(auth.user.id, { folderId }) : [];
-				sendHtml(response, 200, templates.noteListFragment(notes, '', folderId));
+				const query = (url.searchParams.get('q') || '').trim();
+				const [folders, notes] = await Promise.all([
+					itemService.foldersByUserId(auth.user.id),
+					query ? itemService.searchNotes(auth.user.id, query) : itemService.noteHeadersByUserId(auth.user.id),
+				]);
+				sendHtml(response, 200, templates.navigationFragment(folders, notes, '', ''));
 			} catch (error) {
 				sendHtml(response, 500, `<div class="empty-hint">Error: ${templates.escapeHtml(error.message || `${error}`)}</div>`);
 			}
@@ -267,11 +276,11 @@ const createServer = options => {
 				}, upstreamRequestContext(request));
 
 				const [notes, note, folders] = await Promise.all([
-					itemService.notesByUserId(auth.user.id, { folderId: parentId }),
+					itemService.noteHeadersByUserId(auth.user.id),
 					itemService.noteByUserIdAndJopId(auth.user.id, created.id),
 					itemService.foldersByUserId(auth.user.id),
 				]);
-				sendHtml(response, 200, `${templates.noteListFragment(notes, created.id, parentId)}<div id="editor-panel" hx-swap-oob="innerHTML">${templates.editorFragment(note, folders)}</div>`);
+				sendHtml(response, 200, `${templates.navigationFragment(folders, notes, parentId, created.id)}<div id="editor-panel" hx-swap-oob="innerHTML">${templates.editorFragment(note, folders)}</div>`);
 			} catch (error) {
 				sendHtml(response, error.statusCode || 500, `<div class="empty-hint">Error: ${templates.escapeHtml(error.message || `${error}`)}</div>`);
 			}
@@ -287,8 +296,11 @@ const createServer = options => {
 				const existing = await itemService.noteByUserIdAndJopId(auth.user.id, noteId);
 				const folderId = existing ? existing.parentId : '';
 				await itemWriteService.deleteNote(auth.user.sessionId, noteId, upstreamRequestContext(request));
-				const notes = folderId ? await itemService.notesByUserId(auth.user.id, { folderId }) : [];
-				sendHtml(response, 200, `${templates.noteListFragment(notes, '', folderId)}<div id="editor-panel" hx-swap-oob="innerHTML"><div class="editor-empty">Select a note</div></div>`);
+				const [folders, notes] = await Promise.all([
+					itemService.foldersByUserId(auth.user.id),
+					itemService.noteHeadersByUserId(auth.user.id),
+				]);
+				sendHtml(response, 200, `${templates.navigationFragment(folders, notes, folderId, '')}<div id="editor-panel" hx-swap-oob="innerHTML"><div class="editor-empty">Select a note</div></div>`);
 			} catch (error) {
 				sendHtml(response, error.statusCode || 500, `<div class="empty-hint">Error: ${templates.escapeHtml(error.message || `${error}`)}</div>`);
 			}
@@ -706,16 +718,15 @@ const createServer = options => {
 					return;
 				}
 
-				const folders = await itemService.foldersByUserId(auth.user.id);
-				const selectedFolderId = folders.length ? folders[0].id : '';
-				const notes = selectedFolderId ? await itemService.notesByUserId(auth.user.id, { folderId: selectedFolderId }) : [];
-				const sidebarContent = templates.folderListFragment(folders, selectedFolderId);
-				const notelistContent = templates.noteListFragment(notes, '', selectedFolderId);
+				const [folders, notes] = await Promise.all([
+					itemService.foldersByUserId(auth.user.id),
+					itemService.noteHeadersByUserId(auth.user.id),
+				]);
+				const selectedFolderId = '';
 
 				sendHtml(response, 200, templates.layoutPage({
 					user: auth.user,
-					sidebarContent,
-					notelistContent,
+					navContent: templates.navigationFragment(folders, notes, selectedFolderId, ''),
 					joplinBasePath: joplinPublicBasePath,
 				}));
 			} catch (error) {
@@ -741,10 +752,10 @@ const createServer = options => {
 				return;
 			}
 			const folders = await itemService.foldersByUserId(auth.user.id);
+			const notes = await itemService.noteHeadersByUserId(auth.user.id);
 			sendHtml(response, 200, templates.layoutPage({
 				user: auth.user,
-				sidebarContent: templates.folderListFragment(folders, ''),
-				notelistContent: '',
+				navContent: templates.navigationFragment(folders, notes, '', ''),
 				joplinBasePath: joplinPublicBasePath,
 			}));
 		} catch (error) {

@@ -37,6 +37,16 @@ const mapNoteRow = row => {
 	};
 };
 
+const mapNoteHeaderRow = row => {
+	const content = decodeItemContent(row.content);
+	return {
+		id: row.jop_id,
+		parentId: row.jop_parent_id || '',
+		title: content.title || '',
+		updatedTime: Number(row.jop_updated_time || content.updated_time || 0),
+	};
+};
+
 const createItemService = database => {
 	return {
 		async foldersByUserId(userId) {
@@ -81,6 +91,17 @@ const createItemService = database => {
 			`, params);
 
 			return result.rows.map(mapNoteRow);
+		},
+
+		async noteHeadersByUserId(userId) {
+			const result = await database.query(`
+				SELECT id, jop_id, jop_parent_id, jop_updated_time, created_time, content
+				FROM items
+				WHERE owner_id = $1 AND jop_type = $2
+				ORDER BY jop_updated_time DESC, created_time DESC
+			`, [userId, MODEL_TYPE_NOTE]);
+
+			return result.rows.map(mapNoteHeaderRow);
 		},
 
 		async searchNotes(userId, query) {
@@ -157,5 +178,6 @@ module.exports = {
 	createItemService,
 	decodeItemContent,
 	mapFolderRow,
+	mapNoteHeaderRow,
 	mapNoteRow,
 };

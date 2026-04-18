@@ -37,7 +37,7 @@ const noteListItem = (note, selectedNoteId) => {
 		hx-get="/fragments/editor/${encodeURIComponent(note.id)}"
 		hx-target="#editor-panel"
 		hx-swap="innerHTML"
-		hx-on::after-request="document.querySelectorAll('.notelist-item').forEach(b=>b.classList.remove('active'));this.classList.add('active')">
+		hx-on::after-request="document.querySelectorAll('.notelist-item').forEach(b=>b.classList.remove('active'));this.classList.add('active');if(window.innerWidth<=768)closeMobileNav()">
 		<span class="notelist-item-title">${renderInlineMarkdown(escapeHtml(note.title || 'Untitled'))}</span>
 	</button>`;
 };
@@ -49,7 +49,8 @@ const noteListFragment = (notes, selectedNoteId, folderId) => {
 			hx-post="/fragments/notes"
 			hx-vals='${escapeHtml(JSON.stringify({ parentId: folderId }))}'
 			hx-target="#notelist-panel"
-			hx-swap="innerHTML">+ New note</button>` : ''}
+			hx-swap="innerHTML"
+			hx-on::after-request="if(window.innerWidth<=768)closeMobileNav()">+ New note</button>` : ''}
 		<input type="text" class="notelist-search" placeholder="Search..."
 			hx-get="/fragments/search"
 			hx-trigger="input changed delay:300ms"
@@ -65,6 +66,50 @@ const noteListFragment = (notes, selectedNoteId, folderId) => {
 		: '<div class="empty-hint">No notes</div>';
 
 	return `${header}<div class="notelist-items" id="notelist-items">${items}</div>`;
+};
+
+const navigationFragment = (folders, notes, selectedFolderId, selectedNoteId) => {
+	const notesByFolder = new Map();
+	for (const note of notes || []) {
+		const key = note.parentId || '';
+		if (!notesByFolder.has(key)) notesByFolder.set(key, []);
+		notesByFolder.get(key).push(note);
+	}
+
+	const folderSections = (folders || []).map(folder => {
+		const folderNotes = notesByFolder.get(folder.id) || [];
+		const isOpen = folder.id === selectedFolderId || folderNotes.some(n => n.id === selectedNoteId);
+		const count = folderNotes.length;
+		return `<div class="nav-folder collapsed" data-folder-id="${escapeHtml(folder.id)}" data-selected="${isOpen ? '1' : ''}">
+			<div class="nav-folder-row" onclick="toggleNavFolder('${escapeHtml(folder.id)}')">
+				<button type="button" class="nav-folder-toggle" tabindex="-1">&#9656;</button>
+				<span class="sidebar-item-icon">&#128193;</span>
+				<span class="nav-folder-title">${escapeHtml(folder.title || 'Untitled')}</span>
+				<span class="sidebar-item-count">${count || ''}</span>
+				<button type="button" class="btn-icon-sm nav-folder-add" title="New note"
+					hx-post="/fragments/notes"
+					hx-vals='${escapeHtml(JSON.stringify({ parentId: folder.id }))}'
+					hx-target="#nav-panel"
+					hx-swap="innerHTML"
+					hx-on:click="event.stopPropagation()">+</button>
+			</div>
+			<div class="nav-folder-notes">
+				${folderNotes.length ? folderNotes.map(n => noteListItem(n, selectedNoteId)).join('') : '<div class="empty-hint nav-empty">No notes</div>'}
+			</div>
+		</div>`;
+	}).join('');
+
+	return `<div class="nav-panel-header">
+		<input type="text" class="notelist-search" placeholder="Search..."
+			hx-get="/fragments/nav"
+			hx-trigger="input changed delay:300ms"
+			hx-target="#nav-panel"
+			hx-swap="innerHTML"
+			hx-include="this"
+			name="q" />
+		<button class="btn btn-sm" title="New notebook"
+			onclick="event.preventDefault();var t=prompt('Notebook name');if(t&&t.trim()){htmx.ajax('POST','/fragments/folders',{target:'#nav-panel',swap:'innerHTML',values:{title:t.trim()}})}">+ Notebook</button>
+	</div><div class="nav-items">${folderSections || '<div class="empty-hint">No notebooks yet</div>'}</div>`;
 };
 
 // Column 3: editor
@@ -94,7 +139,7 @@ const editorFragment = (note, folders) => {
 			<button type="button" class="btn btn-icon" title="Toggle clean markdown (hide &lt;br&gt; tags)" id="clean-md-toggle" onclick="toggleCleanMd()" style="width:auto;padding:0 6px;font-size:11px;display:none">md</button>
 			<button type="button" class="btn btn-icon btn-danger" title="Delete"
 				hx-delete="/fragments/notes/${encodeURIComponent(note.id)}"
-				hx-target="#notelist-panel"
+				hx-target="#nav-panel"
 				hx-swap="innerHTML"
 				hx-confirm="Delete this note?">&#128465;</button>
 		</div>
@@ -243,7 +288,7 @@ const searchResultsFragment = (notes) => {
 
 // Full page
 const layoutPage = (options = {}) => {
-	const { user, sidebarContent, notelistContent, loginError } = options;
+	const { user, navContent, loginError } = options;
 	const loggedIn = !!user;
 
 	if (!loggedIn) {
@@ -291,17 +336,12 @@ const layoutPage = (options = {}) => {
 </head>
 <body class="theme-matrix">
 	<div class="app">
-		<div class="col-sidebar" id="sidebar-panel">
-			<div class="col-header">
-				<button class="btn-icon-sm sidebar-collapse-btn" title="Toggle notebooks" onclick="var sb=document.getElementById('sidebar-panel');sb.classList.toggle('collapsed');localStorage.setItem('sidebar-collapsed',sb.classList.contains('collapsed')?'1':'')">&#9776;</button>
-				<span class="col-label">NOTEBOOKS</span>
-				<button class="btn-icon-sm" title="New notebook"
-					onclick="event.preventDefault();var t=prompt('Notebook name');if(t&&t.trim()){htmx.ajax('POST','/fragments/folders',{target:'#folder-list',swap:'innerHTML',values:{title:t.trim()}})}">+</button>
-			</div>
-			<div class="col-scroll" id="folder-list">${sidebarContent || ''}</div>
+		<div class="mobile-topbar">
+			<button type="button" class="mobile-nav-toggle" title="Show notebooks and notes" onclick="toggleMobileNav()">&#9776;</button>
 		</div>
-		<div class="col-notelist" id="notelist-panel">
-			${notelistContent || '<div class="empty-hint">Select a notebook</div>'}
+		<div class="mobile-nav-backdrop" id="mobile-nav-backdrop" onclick="closeMobileNav()"></div>
+		<div class="col-nav" id="nav-panel">
+			${navContent || '<div class="empty-hint">No notebooks yet</div>'}
 		</div>
 		<div class="col-editor" id="editor-panel">
 			<div class="editor-empty">Select a note</div>
@@ -325,7 +365,12 @@ const layoutPage = (options = {}) => {
 	if('serviceWorker' in navigator) navigator.serviceWorker.register('/service-worker.js').catch(function(){});
 	function setTheme(t){document.body.className='theme-'+t;localStorage.setItem('joplock-theme',t)}
 	(function(){var s=localStorage.getItem('joplock-theme');if(s){document.body.className='theme-'+s;var e=document.querySelector('.theme-picker');if(e)e.value=s}})();
-	(function(){if(localStorage.getItem('sidebar-collapsed')){var sb=document.getElementById('sidebar-panel');if(sb)sb.classList.add('collapsed')}})();
+	function setMobileNav(open){var nav=document.getElementById('nav-panel');var bd=document.getElementById('mobile-nav-backdrop');if(!nav||!bd)return;nav.classList.toggle('open',open);bd.classList.toggle('open',open);document.body.classList.toggle('mobile-nav-open',open)}
+	function toggleMobileNav(){var nav=document.getElementById('nav-panel');if(!nav)return;setMobileNav(!nav.classList.contains('open'))}
+	function closeMobileNav(){setMobileNav(false)}
+	function navFolderState(){try{return JSON.parse(localStorage.getItem('joplock-nav-folders')||'{}')}catch(e){return {}}}
+	function saveNavFolderState(s){localStorage.setItem('joplock-nav-folders',JSON.stringify(s))}
+	function toggleNavFolder(id,force){var el=document.querySelector('.nav-folder[data-folder-id="'+id.replace(/"/g,'\\"')+'"]');if(!el)return;var collapsed=force===undefined?!el.classList.contains('collapsed'):!force;el.classList.toggle('collapsed',collapsed);var s=navFolderState();s[id]=collapsed?'0':'1';saveNavFolderState(s)}
 	function getTA(){return document.getElementById('note-body')}
 	function getPV(){var pv=document.getElementById('note-preview');return pv&&pv.style.display!=='none'?pv:null}
 	var _cleanMd=localStorage.getItem('joplock-clean-md')!=='0';
@@ -392,8 +437,10 @@ const layoutPage = (options = {}) => {
 		pv.addEventListener('keydown',function(e){if(e.key==='Enter'){var sel=window.getSelection();if(!sel.rangeCount)return;var range=sel.getRangeAt(0);var node=range.startContainer;var el=node.nodeType===3?node.parentElement:node;var cb=el&&el.closest?el.closest('.md-checkbox'):null;if(!cb&&node.nodeType===1&&range.startOffset>0){var prev=node.childNodes[range.startOffset-1];if(prev&&prev.nodeType===1&&prev.classList&&prev.classList.contains('md-checkbox'))cb=prev}if(!cb)return;e.preventDefault();var label=(cb.textContent||'').replace(/^[\\u2610\\u2611][\\u00a0 ]*/,'').replace(/\\u00a0|\\s/g,'');if(!label){var para=document.createElement('p');para.innerHTML='<br>';if(cb.parentNode)cb.parentNode.replaceChild(para,cb);var rp=document.createRange();rp.setStart(para,0);rp.collapse(true);sel.removeAllRanges();sel.addRange(rp);para.scrollIntoView({block:'nearest'});syncPV();return}var neo=document.createElement('div');neo.className='md-checkbox';var tn=document.createTextNode('\u2610\u00a0');neo.appendChild(tn);cb.parentNode.insertBefore(neo,cb.nextSibling);var r=document.createRange();r.setStart(tn,2);r.collapse(true);sel.removeAllRanges();sel.addRange(r);neo.scrollIntoView({block:'nearest'});syncPV();return}});
 		// Scroll to keep cursor visible while typing
 		pv.addEventListener('input',function(){var sel=window.getSelection();if(sel&&sel.rangeCount){var r=sel.getRangeAt(0).getBoundingClientRect();var pr=pv.getBoundingClientRect();if(r.bottom>pr.bottom-8)pv.scrollTop+=r.bottom-pr.bottom+24}})}
-	function initEditorPanel(){var form=document.getElementById('note-editor-form');if(!form||form.dataset.editorInit)return;form.dataset.editorInit='1';initAutoTitle();var ta=getTA();if(ta){ta.addEventListener('input',function(){autoTitle()});if(_cleanMd)ta.value=cleanForDisplay(ta.value)}var pv=document.getElementById('note-preview');if(pv&&pv.style.display!=='none'){activatePV(pv)}var btn=document.getElementById('clean-md-toggle');if(btn){btn.style.display=pv&&pv.style.display!=='none'?'none':'inline-flex';if(_cleanMd)btn.classList.add('active')}}
-	document.body.addEventListener('htmx:afterSettle',function(){initEditorPanel()});
+	function initEditorPanel(){var form=document.getElementById('note-editor-form');if(!form||form.dataset.editorInit)return;form.dataset.editorInit='1';if(window.innerWidth<=768)closeMobileNav();initAutoTitle();var ta=getTA();if(ta){ta.addEventListener('input',function(){autoTitle()});if(_cleanMd)ta.value=cleanForDisplay(ta.value)}var pv=document.getElementById('note-preview');if(pv&&pv.style.display!=='none'){activatePV(pv)}var btn=document.getElementById('clean-md-toggle');if(btn){btn.style.display=pv&&pv.style.display!=='none'?'none':'inline-flex';if(_cleanMd)btn.classList.add('active')}}
+	function initNavPanel(){var state=navFolderState();document.querySelectorAll('.nav-folder').forEach(function(el){var id=el.getAttribute('data-folder-id');var selected=el.getAttribute('data-selected')==='1';var open=state[id]===true||state[id]==='1'||state[id]===1;if(state[id]===undefined)open=false;if(selected)open=true;el.classList.toggle('collapsed',!open)})}
+	document.body.addEventListener('htmx:afterSettle',function(){initNavPanel();initEditorPanel()});
+	window.addEventListener('load',function(){initNavPanel();initEditorPanel()});
 	document.body.addEventListener('htmx:configRequest',function(e){if(e.detail.parameters&&e.detail.parameters.body&&_cleanMd){e.detail.parameters.body=dirtyForSave(e.detail.parameters.body)}});
 	</script>
 </body>
@@ -406,6 +453,7 @@ module.exports = {
 	escapeHtml,
 	folderListItem,
 	folderListFragment,
+	navigationFragment,
 	noteListItem,
 	noteListFragment,
 	editorFragment,
