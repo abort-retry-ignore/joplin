@@ -261,6 +261,34 @@ test('POST /fragments/folders creates folder and returns list', async () => {
 	});
 });
 
+test('POST /fragments/notes selects created note and loads editor', async () => {
+	await withServer({
+		itemWriteService: {
+			createNote: async () => ({ id: 'n-new' }),
+		},
+		itemService: {
+			notesByUserId: async () => [
+				{ id: 'n-old', title: 'Old Note', body: '', bodyPreview: '', parentId: 'f1', isTodo: false, todoCompleted: 0, createdTime: 0, updatedTime: 0 },
+				{ id: 'n-new', title: 'Untitled note', body: '', bodyPreview: '', parentId: 'f1', isTodo: false, todoCompleted: 0, createdTime: 0, updatedTime: 0 },
+			],
+			noteByUserIdAndJopId: async (_uid, id) => ({ id, title: 'Untitled note', body: '', parentId: 'f1', updatedTime: Date.now() }),
+			foldersByUserId: async () => [{ id: 'f1', title: 'Folder 1', parentId: '' }],
+		},
+	}, async port => {
+		const res = await request(port, {
+			path: '/fragments/notes',
+			method: 'POST',
+			headers: { Cookie: 'sessionId=test-session', 'Content-Type': 'application/x-www-form-urlencoded' },
+			body: 'parentId=f1',
+		});
+		assert.equal(res.statusCode, 200);
+		assert.ok(res.body.includes('id="note-item-n-new"'));
+		assert.ok(res.body.includes('class="notelist-item active"'));
+		assert.ok(res.body.includes('id="editor-panel" hx-swap-oob="innerHTML"'));
+		assert.ok(res.body.includes('hx-put="/fragments/editor/n-new"'));
+	});
+});
+
 test('GET / returns full SSR page for logged-in user', async () => {
 	await withServer({
 		itemService: {

@@ -260,14 +260,18 @@ const createServer = options => {
 				const parentId = `${body.parentId || ''}`;
 				if (!parentId) { sendHtml(response, 400, '<div class="empty-hint">Select a folder first.</div>'); return; }
 
-				await itemWriteService.createNote(auth.user.sessionId, {
+				const created = await itemWriteService.createNote(auth.user.sessionId, {
 					title: `${body.title || ''}`.trim() || 'Untitled note',
 					body: '',
 					parentId,
 				}, upstreamRequestContext(request));
 
-				const notes = await itemService.notesByUserId(auth.user.id, { folderId: parentId });
-				sendHtml(response, 200, templates.noteListFragment(notes, '', parentId));
+				const [notes, note, folders] = await Promise.all([
+					itemService.notesByUserId(auth.user.id, { folderId: parentId }),
+					itemService.noteByUserIdAndJopId(auth.user.id, created.id),
+					itemService.foldersByUserId(auth.user.id),
+				]);
+				sendHtml(response, 200, `${templates.noteListFragment(notes, created.id, parentId)}<div id="editor-panel" hx-swap-oob="innerHTML">${templates.editorFragment(note, folders)}</div>`);
 			} catch (error) {
 				sendHtml(response, error.statusCode || 500, `<div class="empty-hint">Error: ${templates.escapeHtml(error.message || `${error}`)}</div>`);
 			}

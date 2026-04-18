@@ -578,7 +578,80 @@ button { cursor: pointer; border: none; background: none; }
 
 /* Responsive */
 @media (max-width: 768px) {
-	.app { flex-direction: column; }
-	.col-sidebar { width: 100%; min-width: 0; max-height: 30vh; border-right: none; border-bottom: 1px solid var(--border); }
-	.col-notelist { width: 100%; min-width: 0; max-height: 30vh; border-right: none; border-bottom: 1px solid var(--border); }
+	body { font-size: 12px; }
+	.app { flex-direction: column; height: calc(100vh - 24px); }
+	.col-sidebar,
+	.col-sidebar.collapsed,
+	.col-notelist {
+		width: 100%;
+		min-width: 0;
+		border-right: none;
+		border-bottom: 1px solid var(--border);
+	}
+	.col-sidebar { max-height: 16vh; }
+	.col-sidebar.collapsed { max-height: none; }
+	.col-notelist { max-height: 22vh; }
+	.col-editor { flex: 1; min-height: 0; }
+	.col-header { padding: 8px 10px 5px; }
+	.col-scroll { padding: 2px 4px 6px; }
+	.sidebar-item { padding: 4px 7px; }
+	.notelist-header { padding: 6px 8px; gap: 5px; }
+	.notelist-item { padding: 7px 10px; }
+	.editor-titlebar {
+		padding: 6px 8px;
+		gap: 6px;
+		flex-wrap: wrap;
+	}
+	.editor-title {
+		order: -1;
+		flex: 1 0 100%;
+		font-size: 16px;
+		line-height: 1.2;
+		padding: 0;
+		min-height: 1.2em;
+	}
+	.editor-folder-select {
+		max-width: calc(100% - 120px);
+		font-size: 11px;
+		padding: 2px 5px;
+	}
+	.editor-folder-arrow { margin: 0; font-size: 12px; }
+	#autosave-status,
+	#autosave-indicator { margin-left: auto; font-size: 10px; }
+	.btn,
+	.btn-sm { padding: 4px 8px; font-size: 11px; }
+	.btn-icon { width: 26px; height: 26px; font-size: 13px; }
+	.editor-toolbar {
+		flex-wrap: nowrap;
+		overflow-x: auto;
+		overflow-y: hidden;
+		padding: 3px 6px;
+		gap: 2px;
+		-webkit-overflow-scrolling: touch;
+	}
+	.editor-toolbar::-webkit-scrollbar { height: 3px; }
+	.editor-toolbar .tb { min-width: 24px; height: 24px; padding: 0 4px; font-size: 12px; flex: 0 0 auto; }
+	.editor-toolbar .tb-div { margin: 0 2px; height: 14px; flex: 0 0 auto; }
+	.editor-body,
+	.editor-preview {
+		padding: 10px 12px;
+		font-size: 14px;
+		line-height: 1.55;
+	}
+	.editor-preview h1 { font-size: 1.45em; }
+	.editor-preview h2 { font-size: 1.28em; }
+	.editor-preview h3 { font-size: 1.15em; }
+	.app-statusbar {
+		height: 24px;
+		gap: 6px;
+		padding: 0 8px;
+		font-size: 10px;
+	}
+	.status-user {
+		max-width: 40vw;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+	.theme-picker { padding: 1px 3px; font-size: 10px; }
 }
