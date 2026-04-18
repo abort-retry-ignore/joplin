@@ -137,6 +137,8 @@ Owns:
 - `.env.app-web-sample`
 - `Dockerfile`
 - Build+deploy: `docker compose -f docker-compose.app-web.yml --env-file .env.app-web up -d --build app-web`
+- Fast deploy: `npm --prefix packages/app-web run deploy:docker`
+- Generate PWA icons/splash assets: `yarn workspace @joplin/app-web run generate:pwa-assets`
 
 ## Joplin Data Model Notes
 
@@ -165,6 +167,19 @@ Notes open in contenteditable preview mode. This avoids showing raw markdown to 
 
 ### htmx SSR (no client framework)
 Zero client-side state. All rendering happens server-side. htmx swaps HTML fragments. This keeps the browser thin and avoids framework complexity. The tradeoff is that rich interactions (WYSIWYG, image resize) require inline JS in the template.
+
+### PWA shell
+`app-web` is installable as a PWA. Current pieces:
+- `public/manifest.webmanifest`
+- `public/service-worker.js`
+- generated PNG icons: `public/icon-192.png`, `public/icon-512.png`, `public/maskable-icon-*.png`, `public/apple-touch-icon.png`
+- generated Apple startup images under `public/apple-splash/`
+- asset generator script: `scripts/generatePwaAssets.mjs`
+
+Notes:
+- iPhone splash screens come from explicit `<link rel="apple-touch-startup-image">` tags in `templates.js`
+- Android splash/install behavior comes from manifest icons, `theme_color`, `background_color`, and `display`
+- service worker should cache only shell/static assets, not notes or API responses
 
 ### Shared Postgres database
 `app-web` connects to the same Postgres database as Joplin Server. No separate DB, no data duplication. Reads go direct to DB; writes go through Joplin Server's API to preserve server-side validation and sync compatibility.

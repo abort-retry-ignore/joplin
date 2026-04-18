@@ -307,6 +307,8 @@ test('GET / returns full SSR page for logged-in user', async () => {
 		assert.ok(res.body.includes('Joplock'));
 		assert.ok(res.body.includes('My Folder'));
 		assert.ok(res.body.includes('htmx.min.js'));
+		assert.ok(res.body.includes('apple-touch-icon.png'));
+		assert.ok(res.body.includes('apple-touch-startup-image'));
 	});
 });
 

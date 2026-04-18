@@ -689,8 +689,8 @@ button { cursor: pointer; border: none; background: none; }
 	.mobile-topbar {
 		display: flex;
 		align-items: center;
-		height: 42px;
-		padding: 0 8px;
+		height: calc(42px + env(safe-area-inset-top, 0px));
+		padding: env(safe-area-inset-top, 0px) 8px 0;
 		border-bottom: 1px solid var(--border);
 		background: var(--bg-side);
 	}
@@ -736,7 +736,7 @@ button { cursor: pointer; border: none; background: none; }
 	}
 	.col-nav.open { transform: translateX(0); }
 	.col-editor { height: 100%; min-height: 0; }
-	.col-editor { height: calc(100% - 42px); }
+	.col-editor { height: calc(100% - 42px - env(safe-area-inset-top, 0px)); }
 	.nav-panel-header { padding: 10px; gap: 5px; }
 	.nav-items { padding: 8px; }
 	.nav-folder-row { padding: 8px; }
