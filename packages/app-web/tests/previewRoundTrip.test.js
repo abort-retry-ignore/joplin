@@ -21,12 +21,22 @@ const previewRoundTrip = markdown => {
 		br: '<br>',
 	});
 	let md = td.turndown(dom.window.document.getElementById('root').innerHTML);
-	md = md.replace(/(?:<br>\n?)+/g, match => {
-		const count = (match.match(/<br>/g) || []).length;
-		if (count === 1) return '\n';
-		return `\n${Array.from({ length: (count - 1) / 2 }, () => '<br>\n').join('')}`;
-	});
-	return md.replace(/\\(\[|\]|\x60|\*|_|\\|\$)/g, '$1');
+	const nl = String.fromCharCode(10);
+	md = md.split('<br/>').join('<br>');
+	md = md.split(`<br>${nl}`).join(nl);
+	while (md.includes('<br><br>')) md = md.split('<br><br>').join(`<br>${nl}`);
+	let out = '';
+	for (let i = 0; i < md.length; i++) {
+		const ch = md.charAt(i);
+		const nx = md.charAt(i + 1);
+		if (ch === '\\' && ['[', ']', '`', '*', '_', '\\', '$'].includes(nx)) {
+			out += nx;
+			i += 1;
+			continue;
+		}
+		out += ch;
+	}
+	return out;
 };
 
 test('preview round-trip preserves printable ascii', () => {
@@ -39,12 +49,15 @@ test('preview round-trip preserves printable ascii', () => {
 
 test('preview round-trip preserves blank-line markers', () => {
 	const body = 'line one\n<br>\nline two\n<br>\n<br>\nline three';
-	assert.equal(previewRoundTrip(body), 'line one\n<br/><br/>line two\n<br/><br/><br/><br/>line three');
+	assert.equal(previewRoundTrip(body), body);
 });
 
 test('logged in layout includes htmlToMarkdown normalization for preview save', () => {
 	const html = layoutPage({ user: { email: 'user@example.com', fullName: 'User' }, navContent: '' });
 	assert.ok(html.includes('function htmlToMarkdown(el){'));
-	assert.ok(html.includes('match(/<br>/g)'));
-	assert.ok(html.includes('return md.replace('));
+	assert.ok(html.includes('var nl=String.fromCharCode(10);'));
+	assert.ok(html.includes('md=md.split(\'<br/>\').join(\'<br>\')'));
+	assert.ok(html.includes('while(md.indexOf(\'<br><br>\')>=0)'));
+	assert.ok(html.includes('ch.charCodeAt(0)===92'));
+	assert.ok(html.includes('return out'));
 });

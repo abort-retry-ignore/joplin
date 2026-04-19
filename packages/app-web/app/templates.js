@@ -500,8 +500,17 @@ const layoutPage = (options = {}) => {
 		_tdService=td;return td}
 	function htmlToMarkdown(el){
 		var md=getTurndown().turndown(el.innerHTML);
-		md=md.replace(/(?:<br>\n?)+/g,function(m){var count=(m.match(/<br>/g)||[]).length;return count===1?'\n':'\n'+Array.from({length:(count-1)/2},function(){return '<br>\n'}).join('')});
-		return md.replace(new RegExp('\\\\(\\\\[|\\\\]|\\\\x60|\\\\*|_|\\\\\\\\|\\\\$)','g'),'$1')
+		var nl=String.fromCharCode(10);
+		md=md.split('<br/>').join('<br>');
+		md=md.split('<br>'+nl).join(nl);
+		while(md.indexOf('<br><br>')>=0)md=md.split('<br><br>').join('<br>'+nl);
+		var out='';
+		for(var i=0;i<md.length;i++){
+			var ch=md.charAt(i),nx=md.charAt(i+1);
+			if(ch.charCodeAt(0)===92&&(nx==='['||nx===']'||nx.charCodeAt(0)===96||nx==='*'||nx==='_'||nx.charCodeAt(0)===92||nx==='$')){out+=nx;i++;continue}
+			out+=ch
+		}
+		return out
 	}
 	function togglePreview(){var ta=document.getElementById('note-body'),pv=document.getElementById('note-preview'),tb=document.getElementById('editor-toolbar'),btn=document.getElementById('preview-toggle'),cleanBtn=document.getElementById('clean-md-toggle');if(!ta||!pv)return;if(pv.style.display==='none'){var body=_cleanMd?dirtyForSave(ta.value):ta.value;fetch('/fragments/preview',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'body='+encodeURIComponent(body)}).then(function(r){return r.text()}).then(function(h){pv.innerHTML=h;pv.contentEditable='true';pv.style.display='';ta.style.display='none';if(btn)btn.innerHTML='&#9998;';if(btn)btn.title='Edit';if(cleanBtn)cleanBtn.style.display='none';activatePV(pv)})}else{if(_pvSyncTimer){clearTimeout(_pvSyncTimer);_pvSyncTimer=null}if(pv.contentEditable==='true'){var md=htmlToMarkdown(pv);ta.value=_cleanMd?cleanForDisplay(md):md}ta.dispatchEvent(new Event('input',{bubbles:true}));pv.contentEditable='false';pv.oninput=null;pv.onkeyup=null;pv.style.display='none';ta.style.display='';if(tb)tb.style.display='';if(btn)btn.innerHTML='&#128065;';if(btn)btn.title='Preview';if(cleanBtn)cleanBtn.style.display='inline-flex'}}
 	document.addEventListener('keydown',function(e){if(!getTA()&&!getPV())return;if((e.ctrlKey||e.metaKey)&&e.key==='b'){e.preventDefault();wrapSel('**','**')}if((e.ctrlKey||e.metaKey)&&e.key==='i'){e.preventDefault();wrapSel('*','*')}});
