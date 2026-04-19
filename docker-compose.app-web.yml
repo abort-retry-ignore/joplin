@@ -1,9 +1,11 @@
 # app-web thin-client stack
 #
 # Important for browser login and CSRF/origin checks:
-# - Set JOPLIN_PUBLIC_BASE_URL to the public URL that users open in the browser.
-# - Example: JOPLIN_PUBLIC_BASE_URL=https://joplinweb.021407.xyz
-# - Joplin Server will be configured internally with APP_BASE_URL=${JOPLIN_PUBLIC_BASE_URL}/joplin
+# - JOPLOCK_PUBLIC_BASE_URL is public URL for app-web users.
+# - JOPLIN_SERVER_PUBLIC_URL is existing public Joplin Server URL.
+# - Example:
+#   JOPLOCK_PUBLIC_BASE_URL=https://joplock.021407.xyz
+#   JOPLIN_SERVER_PUBLIC_URL=https://joplin.021407.xyz
 
 services:
     db:
@@ -23,7 +25,7 @@ services:
             - db
         environment:
             - APP_PORT=22300
-            - APP_BASE_URL=${JOPLIN_PUBLIC_BASE_URL:-http://localhost:5444}/joplin
+            - APP_BASE_URL=${JOPLIN_SERVER_PUBLIC_URL:-http://localhost:22300}
             - SIGNUP_ENABLED=${SIGNUP_ENABLED:-true}
             - DB_CLIENT=pg
             - POSTGRES_PASSWORD=joplin
@@ -43,8 +45,9 @@ services:
         environment:
             - PORT=3001
             - JOPLIN_SERVER_ORIGIN=http://server:22300
-            - JOPLIN_PUBLIC_BASE_PATH=/joplin
-            - JOPLIN_PUBLIC_BASE_URL=${JOPLIN_PUBLIC_BASE_URL:-http://localhost:5444}
+            - JOPLIN_PUBLIC_BASE_PATH=${JOPLIN_PUBLIC_BASE_PATH:-}
+            - JOPLIN_PUBLIC_BASE_URL=${JOPLOCK_PUBLIC_BASE_URL:-http://localhost:5444}
+            - JOPLIN_SERVER_PUBLIC_URL=${JOPLIN_SERVER_PUBLIC_URL:-http://localhost:22300}
             - POSTGRES_PASSWORD=joplin
             - POSTGRES_DATABASE=joplin
             - POSTGRES_USER=joplin

@@ -133,7 +133,7 @@ Owns:
 
 ### Deployment
 - `docker-compose.app-web.yml`
-- `.env.app-web` — `APP_WEB_PORT=5444`, `JOPLIN_PUBLIC_BASE_URL=https://joplinweb.021407.xyz`
+- `.env.app-web` — `APP_WEB_PORT=5444`, `JOPLOCK_PUBLIC_BASE_URL=https://joplock.021407.xyz`, `JOPLIN_SERVER_PUBLIC_URL=https://joplin.021407.xyz`
 - `.env.app-web-sample`
 - `Dockerfile`
 - Build+deploy: `docker compose -f docker-compose.app-web.yml --env-file .env.app-web up -d --build app-web`
@@ -190,6 +190,14 @@ Notes:
 
 ### Shared Postgres database
 `app-web` connects to the same Postgres database as Joplin Server. No separate DB, no data duplication. Reads go direct to DB; writes go through Joplin Server's API to preserve server-side validation and sync compatibility.
+
+### Separate-host add-on mode
+Preferred production shape now:
+- existing Joplin Server keeps its own public host and root paths (example: `https://joplin.021407.xyz`)
+- Joplock runs on a different host (example: `https://joplock.021407.xyz`)
+- `JOPLIN_SERVER_PUBLIC_URL` must be set to the real public Joplin Server URL for upstream Host/Origin headers
+- `JOPLOCK_PUBLIC_BASE_URL` is Joplock's own public host
+- `JOPLIN_PUBLIC_BASE_PATH` can be empty when upstream Joplin runs at `/`
 
 ## Where Not To Build
 

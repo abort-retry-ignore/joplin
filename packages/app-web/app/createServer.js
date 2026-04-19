@@ -159,6 +159,7 @@ const createServer = options => {
 		publicDir,
 		joplinPublicBasePath,
 		joplinPublicBaseUrl,
+		joplinServerPublicUrl,
 		joplinServerOrigin,
 		sessionService,
 		itemService,
@@ -166,6 +167,7 @@ const createServer = options => {
 	} = options;
 
 	const configuredPublicUrl = new URL(joplinPublicBaseUrl);
+	const configuredServerPublicUrl = new URL(joplinServerPublicUrl);
 
 	const authenticatedUser = async request => {
 		const sessionId = sessionIdFromHeaders(request.headers);
@@ -186,20 +188,20 @@ const createServer = options => {
 		return { folders: allFolders, notes: allNotes };
 	};
 
-	const upstreamRequestContext = request => ({
-		host: request.headers.host || configuredPublicUrl.host,
-		protocol: request.headers['x-forwarded-proto'] || configuredPublicUrl.protocol.replace(':', ''),
+	const upstreamRequestContext = _request => ({
+		host: configuredServerPublicUrl.host,
+		protocol: configuredServerPublicUrl.protocol.replace(':', ''),
 	});
 
 	const proxyToJoplinServer = (request, response, url) => {
-		const targetPath = url.pathname.replace(joplinPublicBasePath, '') || '/';
+		const targetPath = joplinPublicBasePath ? (url.pathname.replace(joplinPublicBasePath, '') || '/') : url.pathname;
 		const targetUrl = new URL(joplinServerOrigin);
 		const headers = { ...request.headers };
-		headers.host = request.headers.host || configuredPublicUrl.host;
+		headers.host = configuredServerPublicUrl.host;
 		delete headers.origin;
 		delete headers.referer;
-		headers['x-forwarded-host'] = request.headers.host || configuredPublicUrl.host;
-		headers['x-forwarded-proto'] = (request.headers['x-forwarded-proto'] || configuredPublicUrl.protocol.replace(':', ''));
+		headers['x-forwarded-host'] = configuredServerPublicUrl.host;
+		headers['x-forwarded-proto'] = configuredServerPublicUrl.protocol.replace(':', '');
 
 		const upstreamRequest = http.request({
 			hostname: targetUrl.hostname,
@@ -211,9 +213,9 @@ const createServer = options => {
 			const responseHeaders = { ...upstreamResponse.headers };
 			if (responseHeaders.location) {
 				const location = responseHeaders.location;
-				if (location === '/' || location === `${joplinPublicBasePath}` || location === `${joplinPublicBasePath}/`) {
+				if (location === '/' || (joplinPublicBasePath && (location === `${joplinPublicBasePath}` || location === `${joplinPublicBasePath}/`))) {
 					responseHeaders.location = '/';
-				} else if (location.startsWith('/')) {
+				} else if (joplinPublicBasePath && location.startsWith('/')) {
 					responseHeaders.location = `${joplinPublicBasePath}${location}`;
 				}
 			}
@@ -814,7 +816,7 @@ const createServer = options => {
 		}
 
 		// --- Joplin Server proxy ---
-		if (url.pathname === joplinPublicBasePath || url.pathname.startsWith(`${joplinPublicBasePath}/`)) {
+		if (joplinPublicBasePath && (url.pathname === joplinPublicBasePath || url.pathname.startsWith(`${joplinPublicBasePath}/`))) {
 			proxyToJoplinServer(request, response, url);
 			return;
 		}

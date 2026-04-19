@@ -168,8 +168,8 @@ const checkUpstreamResponse = response => {
 };
 
 const createItemWriteService = options => {
-	const { joplinServerOrigin, joplinPublicBaseUrl } = options;
-	const configuredPublicUrl = new URL(joplinPublicBaseUrl);
+	const { joplinServerOrigin, joplinServerPublicUrl } = options;
+	const configuredPublicUrl = new URL(joplinServerPublicUrl);
 
 	const putSerializedItem = async (sessionId, serializedItem, requestContext = {}) => {
 		const response = await requestUpstream(joplinServerOrigin, {

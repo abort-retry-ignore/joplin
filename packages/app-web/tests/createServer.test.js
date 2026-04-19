@@ -51,6 +51,7 @@ const defaultMocks = (overrides = {}) => ({
 	publicDir: overrides.publicDir || makePublicDir(),
 	joplinPublicBasePath: '/joplin',
 	joplinPublicBaseUrl: 'http://localhost:5444',
+	joplinServerPublicUrl: 'http://localhost:5444/joplin',
 	joplinServerOrigin: 'http://server:22300',
 	itemService: {
 		foldersByUserId: async () => [],
