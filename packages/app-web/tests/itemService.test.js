@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { decodeItemContent, mapFolderRow, mapNoteRow } = require('../app/items/itemService');
+const { decodeItemContent, mapFolderRow, mapNoteHeaderRow, mapNoteRow } = require('../app/items/itemService');
 
 test('decodeItemContent should parse buffer JSON', () => {
 	const output = decodeItemContent(Buffer.from('{"title":"Folder A"}', 'utf8'));
@@ -45,4 +45,22 @@ test('mapNoteRow should build preview and note metadata', () => {
 	assert.equal(note.createdTime, 150);
 	assert.equal(note.isTodo, false);
 	assert.equal(note.todoCompleted, 0);
+});
+
+test('mapNoteHeaderRow should use projected note fields', () => {
+	const note = mapNoteHeaderRow({
+		jop_id: 'note1',
+		jop_parent_id: 'folder1',
+		jop_updated_time: 400,
+		title: 'Projected Note',
+		deleted_time: 0,
+	});
+
+	assert.deepEqual(note, {
+		id: 'note1',
+		parentId: 'folder1',
+		title: 'Projected Note',
+		deletedTime: 0,
+		updatedTime: 400,
+	});
 });

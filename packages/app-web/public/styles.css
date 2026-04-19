@@ -109,6 +109,13 @@ button { cursor: pointer; border: none; background: none; }
 	flex-shrink: 0;
 }
 
+.nav-search-form {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	flex: 1;
+}
+
 .nav-items {
 	flex: 1;
 	overflow-y: auto;
@@ -313,6 +320,12 @@ button { cursor: pointer; border: none; background: none; }
 	font-size: 12px;
 }
 .notelist-search:focus { border-color: var(--border-focus); }
+
+.nav-search-btn {
+	flex-shrink: 0;
+	border: 1px solid var(--border);
+	background: var(--bg-input);
+}
 
 .notelist-items {
 	flex: 1;

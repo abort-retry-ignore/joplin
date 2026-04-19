@@ -41,13 +41,12 @@ const mapNoteRow = row => {
 };
 
 const mapNoteHeaderRow = row => {
-	const content = decodeItemContent(row.content);
 	return {
 		id: row.jop_id,
 		parentId: row.jop_parent_id || '',
-		title: content.title || '',
-		deletedTime: Number(content.deleted_time || 0),
-		updatedTime: Number(row.jop_updated_time || content.updated_time || 0),
+		title: row.title || '',
+		deletedTime: Number(row.deleted_time || 0),
+		updatedTime: Number(row.jop_updated_time || 0),
 	};
 };
 
@@ -107,7 +106,12 @@ const createItemService = database => {
 		async noteHeadersByUserId(userId, options = {}) {
 			const deleted = options.deleted || 'exclude';
 			const result = await database.query(`
-				SELECT id, jop_id, jop_parent_id, jop_updated_time, created_time, content
+				SELECT
+					jop_id,
+					jop_parent_id,
+					jop_updated_time,
+					COALESCE(convert_from(content, 'UTF8')::json->>'title', '') AS title,
+					COALESCE((convert_from(content, 'UTF8')::json->>'deleted_time')::bigint, 0) AS deleted_time
 				FROM items
 				WHERE owner_id = $1 AND jop_type = $2${deletedFilterSql(deleted)}
 				ORDER BY jop_updated_time DESC, created_time DESC

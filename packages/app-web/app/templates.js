@@ -139,13 +139,10 @@ const navigationFragment = (folders, notes, selectedFolderId, selectedNoteId, qu
 	}).join('');
 
 	return `<div class="nav-panel-header">
-		<input type="text" class="notelist-search" placeholder="Search..." value="${escapeHtml(query)}"
-			hx-get="/fragments/nav"
-			hx-trigger="input changed delay:300ms"
-			hx-target="#nav-panel"
-			hx-swap="innerHTML"
-			hx-include="this"
-			name="q" />
+		<form class="nav-search-form" hx-get="/fragments/nav" hx-target="#nav-panel" hx-swap="innerHTML">
+			<input type="text" class="notelist-search" id="nav-search" placeholder="Search..." value="${escapeHtml(query)}" name="q" />
+			<button type="submit" class="btn-icon-sm nav-search-btn" title="Search">&#128269;</button>
+		</form>
 		<button class="btn btn-sm" title="New notebook"
 			onclick="event.preventDefault();var t=prompt('Notebook name');if(t&&t.trim()){htmx.ajax('POST','/fragments/folders',{target:'#nav-panel',swap:'innerHTML',values:{title:t.trim()}})}">+ Notebook</button>
 	</div><div class="nav-items">${folderSections || '<div class="empty-hint">No notebooks yet</div>'}</div>`;

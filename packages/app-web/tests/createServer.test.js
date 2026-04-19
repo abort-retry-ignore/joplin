@@ -206,6 +206,9 @@ test('GET /fragments/nav returns HTML folder-note tree', async () => {
 		assert.ok(res.headers['content-type'].includes('text/html'));
 		assert.ok(res.body.includes('Folder 1'));
 		assert.ok(res.body.includes('Note 1'));
+		assert.ok(res.body.includes('id="nav-search"'));
+		assert.ok(res.body.includes('class="nav-search-form"'));
+		assert.ok(res.body.includes('&#128269;'));
 		assert.ok(res.body.includes('value="Note"'));
 		assert.ok(res.body.includes('hx-get="/fragments/editor/n1"'));
 	});
