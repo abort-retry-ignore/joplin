@@ -196,13 +196,17 @@ test('GET /fragments/nav returns HTML folder-note tree', async () => {
 			noteHeadersByUserId: async () => [
 				{ id: 'n1', title: 'Note 1', parentId: 'f1', updatedTime: 0 },
 			],
+			searchNotes: async () => [
+				{ id: 'n1', title: 'Note 1', parentId: 'f1', updatedTime: 0 },
+			],
 		},
 	}, async port => {
-		const res = await request(port, { path: '/fragments/nav' });
+		const res = await request(port, { path: '/fragments/nav?q=Note' });
 		assert.equal(res.statusCode, 200);
 		assert.ok(res.headers['content-type'].includes('text/html'));
 		assert.ok(res.body.includes('Folder 1'));
 		assert.ok(res.body.includes('Note 1'));
+		assert.ok(res.body.includes('value="Note"'));
 		assert.ok(res.body.includes('hx-get="/fragments/editor/n1"'));
 	});
 });

@@ -285,7 +285,7 @@ const createServer = options => {
 				const data = await navData(auth.user.id);
 				const notes = query ? mapNavNotes(await itemService.searchNotes(auth.user.id, query)) : data.notes;
 				const navFolders = data.folders;
-				sendHtml(response, 200, templates.navigationFragment(navFolders, notes, '', ''));
+				sendHtml(response, 200, templates.navigationFragment(navFolders, notes, '', '', query));
 			} catch (error) {
 				sendHtml(response, 500, `<div class="empty-hint">Error: ${templates.escapeHtml(error.message || `${error}`)}</div>`);
 			}

@@ -99,7 +99,7 @@ const noteMetaFragment = note => `<span id="note-meta" class="note-meta" data-cr
 
 const autosaveConflictFragment = noteId => `<span class="autosave-conflict"><span class="autosave-error">Conflict</span><button type="button" class="btn btn-sm" hx-put="/fragments/editor/${encodeURIComponent(noteId)}" hx-include="#note-editor-form" hx-target="#autosave-status" hx-swap="innerHTML" hx-vals='{"forceSave":"1"}' hx-on:click="if(getPV())syncPV()">Overwrite</button><button type="button" class="btn btn-sm" hx-put="/fragments/editor/${encodeURIComponent(noteId)}" hx-include="#note-editor-form" hx-target="#autosave-status" hx-swap="innerHTML" hx-vals='{"createCopy":"1"}' hx-on:click="if(getPV())syncPV()">Create copy</button></span>`;
 
-const navigationFragment = (folders, notes, selectedFolderId, selectedNoteId) => {
+const navigationFragment = (folders, notes, selectedFolderId, selectedNoteId, query = '') => {
 	const notesByFolder = new Map();
 	for (const note of notes || []) {
 		const key = note.parentId || '';
@@ -137,7 +137,7 @@ const navigationFragment = (folders, notes, selectedFolderId, selectedNoteId) =>
 	}).join('');
 
 	return `<div class="nav-panel-header">
-		<input type="text" class="notelist-search" placeholder="Search..."
+		<input type="text" class="notelist-search" placeholder="Search..." value="${escapeHtml(query)}"
 			hx-get="/fragments/nav"
 			hx-trigger="input changed delay:300ms"
 			hx-target="#nav-panel"
