@@ -62,6 +62,16 @@ test('navigationFragment does not make empty folders expandable', () => {
 	assert.ok(html.includes('nav-folder-toggle-placeholder'));
 });
 
+test('navigationFragment includes shared folder context menu and modal', () => {
+	const html = navigationFragment([{ id: 'f1', title: 'Folder 1', parentId: '' }], [], '', '');
+	assert.ok(html.includes('oncontextmenu="openFolderContextMenu(event,\'f1\',\'Folder 1\')"'));
+	assert.ok(html.includes('id="folder-context-menu"'));
+	assert.ok(html.includes('Edit notebook'));
+	assert.ok(html.includes('Delete notebook'));
+	assert.ok(html.includes('id="folder-modal"'));
+	assert.ok(html.includes('onsubmit="submitFolderEdit(event)"'));
+});
+
 test('renderMarkdown rewrites raw html resource images without self-closing slash', () => {
 	const html = renderMarkdown('<img src=":/49a3f012f300473d98a33b97940306b1" alt="x" width="313" height="417">');
 	assert.ok(html.includes('src="/resources/49a3f012f300473d98a33b97940306b1"'));
@@ -132,6 +142,8 @@ test('logged in layout uses ordered list command and block transforms in preview
 	assert.ok(html.includes('return d.getFullYear()+\'-\'+pad2(d.getMonth()+1)+\'-\'+pad2(d.getDate())+\' \'+pad2(d.getHours())+\':\'+pad2(d.getMinutes())'));
 	assert.ok(html.includes('return months[d.getMonth()]+\'-\'+pad2(d.getDate())+\'-\'+String(d.getFullYear()).slice(-2)'));
 	assert.ok(html.includes('function insertStamp(kind){insertTxt(formatStamp(kind))}'));
+	assert.ok(html.includes('var pre=el&&el.closest?el.closest(\'pre\'):null'));
+	assert.ok(html.includes('if(pre&&pv.contains(pre)){e.preventDefault();if(insertPVText(\'\\n\'))syncPV();return}'));
 });
 
 test('logged in layout emits inline script that parses', () => {
@@ -139,6 +151,8 @@ test('logged in layout emits inline script that parses', () => {
 	const match = html.match(/<script>([\s\S]*)<\/script>\s*<\/body>/);
 	assert.ok(match);
 	assert.doesNotThrow(() => new vm.Script(match[1]));
+	assert.ok(match[1].includes('function openFolderContextMenu(event,id,title)'));
+	assert.ok(match[1].includes('function submitFolderEdit(event)'));
 });
 
 test('styles define ordered list spacing and white matrix note text', () => {

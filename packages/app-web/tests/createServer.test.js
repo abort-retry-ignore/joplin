@@ -333,6 +333,29 @@ test('POST /fragments/folders creates folder and returns list', async () => {
 	});
 });
 
+test('PUT /fragments/folders/:id renames folder and returns list', async () => {
+	let updated = false;
+	await withServer({
+		itemWriteService: {
+			updateFolder: async () => { updated = true; return { id: 'f1' }; },
+		},
+		itemService: {
+			folderByUserIdAndJopId: async () => ({ id: 'f1', title: 'Old Folder', parentId: '' }),
+			foldersByUserId: async () => [{ id: 'f1', title: 'Renamed Folder', parentId: '' }],
+		},
+	}, async port => {
+		const res = await request(port, {
+			path: '/fragments/folders/f1',
+			method: 'PUT',
+			headers: { Cookie: 'sessionId=test-session', 'Content-Type': 'application/x-www-form-urlencoded' },
+			body: 'title=Renamed+Folder',
+		});
+		assert.equal(res.statusCode, 200);
+		assert.ok(updated);
+		assert.ok(res.body.includes('Renamed Folder'));
+	});
+});
+
 test('POST /fragments/notes selects created note and loads editor', async () => {
 	await withServer({
 		itemWriteService: {

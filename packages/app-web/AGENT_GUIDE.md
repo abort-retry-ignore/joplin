@@ -63,6 +63,7 @@ Theme picker includes Matrix, Dark, Light, OLED Dark, Solarized Light, Solarized
 - Checkbox rows in preview are `div.md-checkbox`; click only the icon area to toggle, label text should remain editable/selectable
 - Preview note/body font size and preview code font size are separate CSS tokens: `--font-size-note` and `--font-size-code`
 - Folder names use theme accent color; note titles use normal text color
+- Notebook rows use one shared context menu and one shared rename modal; avoid per-folder menu/modal instances
 
 ## Core Rules
 
@@ -122,7 +123,7 @@ Owns:
 
 ### Data
 - `app/items/itemService.js` — DB reads: folders, notes, search, resource blobs/metadata, `decodeItemContent`, `mapNoteRow`, `mapFolderRow`
-- `app/items/itemWriteService.js` — serialization + upstream writes: `serializeNote`, `serializeFolder`, `serializeResource`, `createResource`, `updateNote`
+- `app/items/itemWriteService.js` — serialization + upstream writes: `serializeNote`, `serializeFolder`, `serializeResource`, `createResource`, `updateNote`, `updateFolder`
 
 ### Static Assets
 - `public/htmx.min.js` — htmx 2.0.4 (~50KB, ~14KB gzipped)
@@ -132,9 +133,10 @@ Owns:
 ### Tests
 - `tests/cookies.test.js`
 - `tests/createServer.test.js` — 24 tests
+- `tests/previewRoundTrip.test.js` — preview save/load round-trip coverage without a browser harness
 - `tests/itemService.test.js`
 - `tests/itemWriteService.test.js` — 3 tests
-- Run: `node --test packages/app-web/tests/*.test.js`
+- Run: `node --test packages/app-web/tests/**/*.test.js`
 
 ### Deployment
 - `docker-compose.app-web.yml`
@@ -167,6 +169,8 @@ Owns:
 ### Blank line preservation
 Extra blank lines (3+ consecutive newlines) are preserved as `<div class="md-blank-line">` in preview. The `htmlToMarkdown` converter turns each back into `\n`. The `.join('')` on rendered blocks prevents inter-element text nodes that caused expansion bugs. Whitespace-only text nodes containing `\n` are skipped in `htmlToMarkdown` as defense-in-depth.
 
+Do not inject synthetic blank lines around headings or other block tags during markdown -> HTML rendering. That can come back as real blank lines after the next preview save/load round-trip.
+
 ### Contenteditable checkbox behavior
 Checkboxes in preview use a leading icon text node (`☐`/`☑`) plus `\u00a0` so the caret lands after the icon. This has a few gotchas:
 - Empty-checkbox detection must strip both normal spaces and `\u00a0`, not just `.trim()`
@@ -180,6 +184,11 @@ Checkboxes in preview use a leading icon text node (`☐`/`☑`) plus `\u00a0` s
 - Quote and code block preview actions use block replacement helpers instead of inserting literal markdown text into the DOM
 - Inline code in preview inserts a `<code>` wrapper directly
 - Inline template JS is fragile: validate emitted script parsing when touching escaping-heavy logic
+
+### Preview round-trip coverage
+- Keep the printable-ASCII round-trip test for character safety
+- Keep a mixed-format round-trip test that includes headings, inline styles, lists, checkboxes, quotes, code blocks, rules, links, images, and explicit blank-line markers
+- These tests should use `renderMarkdown()` plus Turndown/JSDOM directly, not a browser harness
 
 ### Theme and typography tokens
 - Matrix theme note text is white; folder names stay green via accent coloring

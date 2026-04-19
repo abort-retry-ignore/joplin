@@ -236,6 +236,16 @@ const createItemWriteService = options => {
 			await deleteItem(sessionId, folderPath(folderId), requestContext);
 		},
 
+		async updateFolder(sessionId, existingFolder, updates, requestContext) {
+			const serialized = serializeFolder({
+				id: existingFolder.id,
+				title: updates.title !== undefined ? updates.title : existingFolder.title,
+				parentId: updates.parentId !== undefined ? updates.parentId : existingFolder.parentId,
+			});
+			await putSerializedItem(sessionId, serialized, requestContext);
+			return { id: serialized.id };
+		},
+
 		async createNote(sessionId, note, requestContext) {
 			const serialized = serializeNote(note);
 			await putSerializedItem(sessionId, serialized, requestContext);

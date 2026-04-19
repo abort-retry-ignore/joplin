@@ -115,8 +115,8 @@ const navigationFragment = (folders, notes, selectedFolderId, selectedNoteId, qu
 		const count = folderNotes.length;
 		const isExpandable = !!count;
 		const isTrash = folder.id === 'de1e7ede1e7ede1e7ede1e7ede1e7ede';
-		return `<div class="nav-folder collapsed${isExpandable ? '' : ' nav-folder-empty'}" data-folder-id="${escapeHtml(folder.id)}" data-selected="${isOpen ? '1' : ''}">
-			<div class="nav-folder-row"${isExpandable ? ` onclick="toggleNavFolder('${escapeHtml(folder.id)}')"` : ''}>
+		return `<div class="nav-folder collapsed${isExpandable ? '' : ' nav-folder-empty'}" data-folder-id="${escapeHtml(folder.id)}" data-folder-title="${escapeHtml(folder.title || 'Untitled')}" data-selected="${isOpen ? '1' : ''}">
+			<div class="nav-folder-row"${isExpandable ? ` onclick="toggleNavFolder('${escapeHtml(folder.id)}')"` : ''} oncontextmenu="openFolderContextMenu(event,'${escapeHtml(folder.id)}','${escapeHtml(folder.title || 'Untitled')}')">
 				${isExpandable ? '<button type="button" class="nav-folder-toggle" tabindex="-1">&#9656;</button>' : '<span class="nav-folder-toggle nav-folder-toggle-placeholder"></span>'}
 				<span class="sidebar-item-icon">${isTrash ? '&#128465;' : '&#128193;'}</span>
 				<span class="nav-folder-title">${escapeHtml(folder.title || 'Untitled')}</span>
@@ -147,7 +147,22 @@ const navigationFragment = (folders, notes, selectedFolderId, selectedNoteId, qu
 		</form>
 		<button class="btn btn-sm" title="New notebook"
 			onclick="event.preventDefault();var t=prompt('Notebook name');if(t&&t.trim()){htmx.ajax('POST','/fragments/folders',{target:'#nav-panel',swap:'innerHTML',values:{title:t.trim()}})}">+ Folder</button>
-	</div><div class="nav-items">${folderSections || '<div class="empty-hint">No notebooks yet</div>'}</div>`;
+	</div><div class="nav-items">${folderSections || '<div class="empty-hint">No notebooks yet</div>'}</div>
+	<div class="folder-context-menu" id="folder-context-menu" hidden>
+		<button type="button" class="folder-context-item" onclick="editFolderFromMenu()">Edit notebook</button>
+		<button type="button" class="folder-context-item danger" onclick="deleteFolderFromMenu()">Delete notebook</button>
+	</div>
+	<div class="folder-modal-backdrop" id="folder-modal-backdrop" hidden onclick="closeFolderModal()"></div>
+	<div class="folder-modal" id="folder-modal" hidden>
+		<form class="folder-modal-card" id="folder-edit-form" onsubmit="submitFolderEdit(event)">
+			<h3 class="folder-modal-title">Edit notebook</h3>
+			<input type="text" id="folder-edit-title" class="login-input" placeholder="Notebook name" required />
+			<div class="folder-modal-actions">
+				<button type="button" class="btn btn-sm btn-secondary" onclick="closeFolderModal()">Cancel</button>
+				<button type="submit" class="btn btn-sm btn-primary">Save</button>
+			</div>
+		</form>
+	</div>`;
 };
 
 // Column 3: editor
@@ -188,20 +203,20 @@ const editorFragment = (note, folders) => {
 				hx-confirm="${note.deletedTime ? 'Permanently delete this note?' : 'Move this note to trash?'}">&#128465;</button>
 		</div>
 		<div class="editor-toolbar" id="editor-toolbar">
-			<button type="button" class="tb" title="Bold (Ctrl+B)" onclick="wrapSel('**','**')"><b>B</b></button>
-			<button type="button" class="tb" title="Italic (Ctrl+I)" onclick="wrapSel('*','*')"><i>I</i></button>
-			<button type="button" class="tb" title="Underline" onclick="wrapSel('++','++')"><u>U</u></button>
-			<button type="button" class="tb" title="Strikethrough" onclick="wrapSel('~~','~~')"><s>S</s></button>
+			<button type="button" class="tb" data-format="bold" title="Bold (Ctrl+B)" onclick="wrapSel('**','**')"><b>B</b></button>
+			<button type="button" class="tb" data-format="italic" title="Italic (Ctrl+I)" onclick="wrapSel('*','*')"><i>I</i></button>
+			<button type="button" class="tb" data-format="underline" title="Underline" onclick="wrapSel('++','++')"><u>U</u></button>
+			<button type="button" class="tb" data-format="strikethrough" title="Strikethrough" onclick="wrapSel('~~','~~')"><s>S</s></button>
 			<span class="tb-div"></span>
-			<button type="button" class="tb" title="Heading 1" onclick="insertPfx('# ')">H1</button>
-			<button type="button" class="tb" title="Heading 2" onclick="insertPfx('## ')">H2</button>
-			<button type="button" class="tb" title="Heading 3" onclick="insertPfx('### ')">H3</button>
+			<button type="button" class="tb" data-format="h1" title="Heading 1" onclick="insertPfx('# ')">H1</button>
+			<button type="button" class="tb" data-format="h2" title="Heading 2" onclick="insertPfx('## ')">H2</button>
+			<button type="button" class="tb" data-format="h3" title="Heading 3" onclick="insertPfx('### ')">H3</button>
 			<span class="tb-div"></span>
 			<button type="button" class="tb" title="Bullet list" onclick="insertPfx('- ')">&#8226;</button>
 			<button type="button" class="tb" title="Numbered list" onclick="insertPfx('1. ')">1.</button>
 			<button type="button" class="tb" title="Checkbox" onclick="insertPfx('- [ ] ')">&#9744;</button>
 			<span class="tb-div"></span>
-			<button type="button" class="tb" title="Inline code" onclick="wrapSel('\`','\`')">&lt;/&gt;</button>
+			<button type="button" class="tb" data-format="inline-code" title="Inline code" onclick="wrapSel('\`','\`')">&lt;/&gt;</button>
 			<button type="button" class="tb" title="Code block" onclick="wrapSel('\\n\`\`\`\\n','\\n\`\`\`\\n')">{ }</button>
 			<button type="button" class="tb" title="Quote" onclick="insertPfx('> ')">&#8220;</button>
 			<button type="button" class="tb" title="Horizontal rule" onclick="insertTxt('\\n---\\n')">&#8212;</button>
@@ -303,10 +318,9 @@ const renderMarkdown = (markdown) => {
 	html = html.replace(/^\d+\.\s+(.+)$/gm, '<li class="ol-item">$1</li>');
 	// Wrap consecutive ol-item <li> in <ol>
 	html = html.replace(/((?:<li class="ol-item">.*<\/li>\n?)+)/g, (_m, items) => `<ol>${items.replace(/ class="ol-item"/g, '')}</ol>`);
-	// Ensure block elements have double-newline spacing around them
-	html = html.replace(/(<\/(?:ul|ol|pre|blockquote|h[1-6])>)\n?/g, '$1\n\n');
-	html = html.replace(/\n?(<(?:ul|ol|pre|blockquote|h[1-6])[> ])/g, '\n\n$1');
-
+	// Isolate block tags so paragraph wrapping does not create invalid <p><h1>...</h1></p> markup.
+	html = html.replace(/\n+(<(?:h[1-6]|pre|ul|ol|blockquote|hr|div)[> ])/g, '\n\n$1');
+	html = html.replace(/(<\/(?:h[1-6]|pre|ul|ol|blockquote|div)>|<hr>)\n+/g, '$1\n\n');
 	// Blockquote
 	html = html.replace(/^&gt;\s+(.+)$/gm, '<blockquote>$1</blockquote>');
 
@@ -446,6 +460,14 @@ const layoutPage = (options = {}) => {
 	(function(){if(localStorage.getItem('joplock-nav-collapsed')==='1')document.body.classList.add('nav-collapsed')})();
 	function markEdited(){var s=document.getElementById('autosave-status');if(s)s.innerHTML='<span class="autosave-edited">Edited</span>'}
 	function renderNoteMeta(){var meta=document.getElementById('note-meta');if(!meta)return;var c=Number(meta.getAttribute('data-created-time')||0),u=Number(meta.getAttribute('data-updated-time')||0);if(!c&&!u){meta.textContent='';return}var months=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];var fmt=function(ts){if(!ts)return '';var d=new Date(ts);return String(d.getDate()).padStart(2,'0')+'-'+months[d.getMonth()]+'-'+String(d.getFullYear()).slice(-2)};meta.textContent='Created '+fmt(c)+' | Edited '+fmt(u)}
+	var _folderMenuState={id:'',title:''};
+	function closeFolderContextMenu(){var menu=document.getElementById('folder-context-menu');if(menu)menu.hidden=true}
+	function openFolderContextMenu(event,id,title){if(event){event.preventDefault();event.stopPropagation()}var menu=document.getElementById('folder-context-menu');if(!menu)return false;_folderMenuState={id:id,title:title};menu.hidden=false;menu.style.left=(event.clientX||16)+'px';menu.style.top=(event.clientY||16)+'px';return false}
+	function closeFolderModal(){var modal=document.getElementById('folder-modal');var backdrop=document.getElementById('folder-modal-backdrop');if(modal)modal.hidden=true;if(backdrop)backdrop.hidden=true}
+	function openFolderModal(){var input=document.getElementById('folder-edit-title');var modal=document.getElementById('folder-modal');var backdrop=document.getElementById('folder-modal-backdrop');if(input)input.value=_folderMenuState.title||'';if(modal)modal.hidden=false;if(backdrop)backdrop.hidden=false;closeFolderContextMenu();if(input)input.focus()}
+	function editFolderFromMenu(){if(!_folderMenuState.id)return;openFolderModal()}
+	function deleteFolderFromMenu(){if(!_folderMenuState.id)return;closeFolderContextMenu();if(confirm('Delete notebook "'+(_folderMenuState.title||'Untitled')+'"?')){htmx.ajax('DELETE','/fragments/folders/'+encodeURIComponent(_folderMenuState.id),{target:'#nav-panel',swap:'innerHTML'})}}
+	function submitFolderEdit(event){if(event)event.preventDefault();var input=document.getElementById('folder-edit-title');var title=input?input.value.trim():'';if(!_folderMenuState.id||!title)return false;htmx.ajax('PUT','/fragments/folders/'+encodeURIComponent(_folderMenuState.id),{target:'#nav-panel',swap:'innerHTML',values:{title:title}});closeFolderModal();return false}
 	function navFolderState(){try{return JSON.parse(localStorage.getItem('joplock-nav-folders')||'{}')}catch(e){return {}}}
 	function saveNavFolderState(s){localStorage.setItem('joplock-nav-folders',JSON.stringify(s))}
 	function toggleNavFolder(id,force){var el=document.querySelector('.nav-folder[data-folder-id="'+id.replace(/"/g,'\\"')+'"]');if(!el)return;var collapsed=force===undefined?!el.classList.contains('collapsed'):!force;el.classList.toggle('collapsed',collapsed);var s=navFolderState();s[id]=collapsed?'0':'1';saveNavFolderState(s)}
@@ -456,6 +478,7 @@ const layoutPage = (options = {}) => {
 	function dirtyForSave(md){var lines=md.split('\\n');var out=[];for(var i=0;i<lines.length;i++){if(lines[i]===''&&i>0&&out.length>0&&out[out.length-1]===''){out.push('<br>');continue}out.push(lines[i])}return out.join('\\n')}
 	function applyCleanMd(){var ta=getTA();if(!ta)return;var btn=document.getElementById('clean-md-toggle');if(_cleanMd){ta.value=cleanForDisplay(ta.value);if(btn)btn.classList.add('active')}else{ta.value=dirtyForSave(ta.value);if(btn)btn.classList.remove('active')}}
 	function toggleCleanMd(){_cleanMd=!_cleanMd;localStorage.setItem('joplock-clean-md',_cleanMd?'1':'0');applyCleanMd()}
+	function applyMobileTitleMode(){var ti=document.querySelector('.editor-title');if(!ti)return;var mobile=window.innerWidth<=768;ti.contentEditable=mobile?'false':'true';ti.classList.toggle('editor-title-mobile-readonly',mobile)}
 	var _pvSyncTimer=null;
 	function syncPV(){var pv=getPV(),ta=getTA();if(pv&&ta){var md=htmlToMarkdown(pv);if(_cleanMd){ta.value=cleanForDisplay(md)}else{ta.value=md}ta.dispatchEvent(new Event('input',{bubbles:true}))}}
 	function scheduleSyncPV(){if(_pvSyncTimer)clearTimeout(_pvSyncTimer);_pvSyncTimer=setTimeout(function(){_pvSyncTimer=null;syncPV();autoTitle()},150)}
@@ -473,6 +496,7 @@ const layoutPage = (options = {}) => {
 	document.addEventListener('mousemove',function(e){if(!_resizing)return;e.preventDefault();var dx=e.clientX-_resizing.startX,dy=e.clientY-_resizing.startY;var nw=Math.max(32,_resizing.startW+dx);var ratio=_resizing.startH/_resizing.startW;_resizing.img.style.width=nw+'px';_resizing.img.style.height=Math.round(nw*ratio)+'px'});
 	document.addEventListener('mouseup',function(){if(_resizing){_resizing=null;syncPV()}});
 	function pvBlockText(block){if(!block)return '';var text=typeof block.innerText==='string'?block.innerText:(block.textContent||'');return text.replace(/\\r/g,'')}
+	function insertPVText(text){var sel=window.getSelection();if(!sel||!sel.rangeCount)return false;var range=sel.getRangeAt(0);range.deleteContents();var node=document.createTextNode(text);range.insertNode(node);range.setStart(node,text.length);range.collapse(true);sel.removeAllRanges();sel.addRange(range);return true}
 	function setPVCaret(node,offset){var sel=window.getSelection();if(!sel)return;var range=document.createRange();if(node&&node.nodeType===3){range.setStart(node,Math.min(offset,node.textContent.length));range.collapse(true)}else{range.selectNodeContents(node);range.collapse(false)}sel.removeAllRanges();sel.addRange(range)}
 	function replacePVBlock(buildNode){var pv=getPV();if(!pv)return false;var sel=window.getSelection();if(!sel||!sel.rangeCount)return false;var range=sel.getRangeAt(0);if(!pv.contains(range.commonAncestorContainer))return false;var block=range.startContainer;while(block&&block!==pv&&block.nodeType!==1)block=block.parentNode;if(!block||block===pv)block=range.startContainer.parentNode;while(block&&block!==pv&&block.nodeType===1&&!/^(P|DIV|LI|BLOCKQUOTE|PRE|H[1-6])$/.test(block.nodeName))block=block.parentNode;var neo=buildNode(block,sel.toString(),range,pv);if(!neo)return false;if(block&&block.parentNode&&block!==pv){block.parentNode.replaceChild(neo,block)}else{range.deleteContents();range.insertNode(neo)}var focusNode=neo.querySelector?neo.querySelector('code'):null;if(!focusNode)focusNode=neo;var textNode=focusNode.firstChild&&focusNode.firstChild.nodeType===3?focusNode.firstChild:null;setPVCaret(textNode||focusNode,textNode?textNode.textContent.length:0);syncPV();pv.focus();return true}
 	function transformPVBlock(tagName,defaultText){return replacePVBlock(function(block,selectedText,range,pv){var text=(!range.collapsed&&selectedText?selectedText:(block&&block!==pv?pvBlockText(block):selectedText))||defaultText;var neo=document.createElement(tagName);if(tagName==='pre'){var code=document.createElement('code');code.textContent=text;neo.appendChild(code)}else{neo.textContent=text}return neo})}
@@ -515,11 +539,14 @@ const layoutPage = (options = {}) => {
 	function htmlToMarkdown(el){
 		var md=getTurndown().turndown(el.innerHTML);
 		var nl=String.fromCharCode(10);
-		var headingGapRe=new RegExp('^(#{1,6}[^'+nl+']*)'+nl+nl+'(?=\\S)','gm');
+		var headingGapRe=new RegExp('^(#{1,6}[^'+nl+']*)'+nl+'{2,}(?=\\S)','gm');
+		var headingLeadRe=new RegExp('([^'+nl+'])'+nl+'{2,}(#{1,6}\\s)','g');
 		md=md.split('<br/>').join('<br>');
 		md=md.split('<br>'+nl).join(nl);
 		while(md.indexOf('<br><br>')>=0)md=md.split('<br><br>').join('<br>'+nl);
+		md=md.replace(headingLeadRe,'$1'+nl+'$2');
 		md=md.replace(headingGapRe,'$1'+nl);
+		md=md.replace(new RegExp(nl+nl+'<br>$'),'');
 		var out='';
 		for(var i=0;i<md.length;i++){
 			var ch=md.charAt(i),nx=md.charAt(i+1);
@@ -529,18 +556,20 @@ const layoutPage = (options = {}) => {
 		return out
 	}
 	function togglePreview(){var ta=document.getElementById('note-body'),pv=document.getElementById('note-preview'),tb=document.getElementById('editor-toolbar'),btn=document.getElementById('preview-toggle'),cleanBtn=document.getElementById('clean-md-toggle');if(!ta||!pv)return;if(pv.style.display==='none'){var body=_cleanMd?dirtyForSave(ta.value):ta.value;fetch('/fragments/preview',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'body='+encodeURIComponent(body)}).then(function(r){return r.text()}).then(function(h){pv.innerHTML=h;pv.contentEditable='true';pv.style.display='';ta.style.display='none';if(btn)btn.innerHTML='&#9998;';if(btn)btn.title='Edit';if(cleanBtn)cleanBtn.style.display='none';activatePV(pv)})}else{if(_pvSyncTimer){clearTimeout(_pvSyncTimer);_pvSyncTimer=null}if(pv.contentEditable==='true'){var md=htmlToMarkdown(pv);ta.value=_cleanMd?cleanForDisplay(md):md}ta.dispatchEvent(new Event('input',{bubbles:true}));pv.contentEditable='false';pv.oninput=null;pv.onkeyup=null;pv.style.display='none';ta.style.display='';if(tb)tb.style.display='';if(btn)btn.innerHTML='&#128065;';if(btn)btn.title='Preview';if(cleanBtn)cleanBtn.style.display='inline-flex'}}
-	document.addEventListener('keydown',function(e){if(!getTA()&&!getPV())return;if((e.ctrlKey||e.metaKey)&&e.key==='b'){e.preventDefault();wrapSel('**','**')}if((e.ctrlKey||e.metaKey)&&e.key==='i'){e.preventDefault();wrapSel('*','*')}});
+	document.addEventListener('keydown',function(e){if(e.key==='Escape'){closeFolderContextMenu();closeFolderModal()}if(!getTA()&&!getPV())return;if((e.ctrlKey||e.metaKey)&&e.key==='b'){e.preventDefault();wrapSel('**','**')}if((e.ctrlKey||e.metaKey)&&e.key==='i'){e.preventDefault();wrapSel('*','*')}});
+	document.addEventListener('click',function(e){var menu=document.getElementById('folder-context-menu');if(menu&&!menu.hidden&&!menu.contains(e.target))closeFolderContextMenu()});
 	function activatePV(pv){if(!pv)return;pv.contentEditable='true';initImgResize(pv);pv.oninput=scheduleSyncPV;pv.onkeyup=null;if(pv.dataset.pvInit)return;pv.dataset.pvInit='1';
 		// Click checkbox icon to toggle checked state
 		pv.addEventListener('click',function(e){var cb=e.target.closest('.md-checkbox');if(!cb)return;var txt=cb.firstChild;if(!txt||txt.nodeType!==3)return;var icon=txt.textContent.charAt(0);if(icon!=='\u2610'&&icon!=='\u2611')return;var r=document.createRange();r.setStart(txt,0);r.setEnd(txt,Math.min(2,txt.textContent.length));var iconRect=r.getBoundingClientRect();if(e.clientX>iconRect.right)return;e.preventDefault();var checked=!cb.classList.contains('checked');cb.classList.toggle('checked',checked);txt.textContent=(checked?'\u2611':'\u2610')+txt.textContent.slice(1);syncPV()});
-		// Enter after checkbox creates new checkbox; scroll new content into view
-		pv.addEventListener('keydown',function(e){if(e.key==='Enter'){var sel=window.getSelection();if(!sel.rangeCount)return;var range=sel.getRangeAt(0);var node=range.startContainer;var el=node.nodeType===3?node.parentElement:node;var cb=el&&el.closest?el.closest('.md-checkbox'):null;if(!cb&&node.nodeType===1&&range.startOffset>0){var prev=node.childNodes[range.startOffset-1];if(prev&&prev.nodeType===1&&prev.classList&&prev.classList.contains('md-checkbox'))cb=prev}if(!cb)return;e.preventDefault();var label=(cb.textContent||'').replace(/^[\\u2610\\u2611][\\u00a0 ]*/,'').replace(/\\u00a0|\\s/g,'');if(!label){var para=document.createElement('p');para.innerHTML='<br>';if(cb.parentNode)cb.parentNode.replaceChild(para,cb);var rp=document.createRange();rp.setStart(para,0);rp.collapse(true);sel.removeAllRanges();sel.addRange(rp);para.scrollIntoView({block:'nearest'});syncPV();return}var neo=document.createElement('div');neo.className='md-checkbox';var tn=document.createTextNode('\u2610\u00a0');neo.appendChild(tn);cb.parentNode.insertBefore(neo,cb.nextSibling);var r=document.createRange();r.setStart(tn,2);r.collapse(true);sel.removeAllRanges();sel.addRange(r);neo.scrollIntoView({block:'nearest'});syncPV();return}});
+		// Enter inside code blocks should stay in the same block; Enter after checkbox creates new checkbox
+		pv.addEventListener('keydown',function(e){if(e.key==='Enter'){var sel=window.getSelection();if(!sel.rangeCount)return;var range=sel.getRangeAt(0);var node=range.startContainer;var el=node.nodeType===3?node.parentElement:node;var pre=el&&el.closest?el.closest('pre'):null;if(pre&&pv.contains(pre)){e.preventDefault();if(insertPVText('\\n'))syncPV();return}var cb=el&&el.closest?el.closest('.md-checkbox'):null;if(!cb&&node.nodeType===1&&range.startOffset>0){var prev=node.childNodes[range.startOffset-1];if(prev&&prev.nodeType===1&&prev.classList&&prev.classList.contains('md-checkbox'))cb=prev}if(!cb)return;e.preventDefault();var label=(cb.textContent||'').replace(/^[\\u2610\\u2611][\\u00a0 ]*/,'').replace(/\\u00a0|\\s/g,'');if(!label){var para=document.createElement('p');para.innerHTML='<br>';if(cb.parentNode)cb.parentNode.replaceChild(para,cb);var rp=document.createRange();rp.setStart(para,0);rp.collapse(true);sel.removeAllRanges();sel.addRange(rp);para.scrollIntoView({block:'nearest'});syncPV();return}var neo=document.createElement('div');neo.className='md-checkbox';var tn=document.createTextNode('\u2610\u00a0');neo.appendChild(tn);cb.parentNode.insertBefore(neo,cb.nextSibling);var r=document.createRange();r.setStart(tn,2);r.collapse(true);sel.removeAllRanges();sel.addRange(r);neo.scrollIntoView({block:'nearest'});syncPV();return}});
 		// Scroll to keep cursor visible while typing
 		pv.addEventListener('input',function(){var sel=window.getSelection();if(sel&&sel.rangeCount){var r=sel.getRangeAt(0).getBoundingClientRect();var pr=pv.getBoundingClientRect();if(r.bottom>pr.bottom-8)pv.scrollTop+=r.bottom-pr.bottom+24}})}
-	function initEditorPanel(){var form=document.getElementById('note-editor-form');if(!form||form.dataset.editorInit)return;form.dataset.editorInit='1';if(window.innerWidth<=768)closeNav();var status=document.getElementById('autosave-status');if(status&&!status.innerHTML)status.innerHTML='<span class="autosave-ok">Saved</span>';form.addEventListener('input',function(){markEdited()});initAutoTitle();renderNoteMeta();var ta=getTA();if(ta){ta.addEventListener('input',function(){autoTitle()});if(_cleanMd)ta.value=cleanForDisplay(ta.value)}var pv=document.getElementById('note-preview');if(pv&&pv.style.display!=='none'){activatePV(pv)}var btn=document.getElementById('clean-md-toggle');if(btn){btn.style.display=pv&&pv.style.display!=='none'?'none':'inline-flex';if(_cleanMd)btn.classList.add('active')}}
+	function initEditorPanel(){var form=document.getElementById('note-editor-form');if(!form||form.dataset.editorInit)return;form.dataset.editorInit='1';if(window.innerWidth<=768)closeNav();var status=document.getElementById('autosave-status');if(status&&!status.innerHTML)status.innerHTML='<span class="autosave-ok">Saved</span>';form.addEventListener('input',function(){markEdited()});initAutoTitle();applyMobileTitleMode();renderNoteMeta();var ta=getTA();if(ta){ta.addEventListener('input',function(){autoTitle()});if(_cleanMd)ta.value=cleanForDisplay(ta.value)}var pv=document.getElementById('note-preview');if(pv&&pv.style.display!=='none'){activatePV(pv)}var btn=document.getElementById('clean-md-toggle');if(btn){btn.style.display=pv&&pv.style.display!=='none'?'none':'inline-flex';if(_cleanMd)btn.classList.add('active')}}
 	function initNavPanel(){var state=navFolderState();document.querySelectorAll('.nav-folder').forEach(function(el){var id=el.getAttribute('data-folder-id');var selected=el.getAttribute('data-selected')==='1';var open=state[id]===true||state[id]==='1'||state[id]===1;if(state[id]===undefined)open=false;if(selected)open=true;el.classList.toggle('collapsed',!open)})}
 	document.body.addEventListener('htmx:afterSettle',function(){initNavPanel();initEditorPanel()});
 	window.addEventListener('load',function(){initNavPanel();initEditorPanel()});
+	window.addEventListener('resize',applyMobileTitleMode);
 	document.body.addEventListener('htmx:configRequest',function(e){if(e.detail.parameters&&e.detail.parameters.body&&_cleanMd){e.detail.parameters.body=dirtyForSave(e.detail.parameters.body)}});
 	</script>
 </body>

@@ -277,6 +277,28 @@ const createServer = options => {
 			return;
 		}
 
+		if (url.pathname.startsWith('/fragments/folders/') && request.method === 'PUT') {
+			try {
+				const auth = await authenticatedUser(request);
+				if (auth.error) { sendHtml(response, 401, '<div class="empty-hint">Session expired.</div>'); return; }
+
+				const folderId = decodeURIComponent(url.pathname.slice('/fragments/folders/'.length));
+				const body = await parseBody(request);
+				const title = `${body.title || ''}`.trim();
+				if (!folderId) { sendHtml(response, 404, '<div class="empty-hint">Folder not found.</div>'); return; }
+				if (!title) { sendHtml(response, 400, '<div class="empty-hint">Folder title is required.</div>'); return; }
+				const existingFolder = await itemService.folderByUserIdAndJopId(auth.user.id, folderId);
+				if (!existingFolder) { sendHtml(response, 404, '<div class="empty-hint">Folder not found.</div>'); return; }
+
+				await itemWriteService.updateFolder(auth.user.sessionId, existingFolder, { title }, upstreamRequestContext(request));
+				const { folders, notes } = await navData(auth.user.id);
+				sendHtml(response, 200, templates.navigationFragment(folders, notes, folderId, ''));
+			} catch (error) {
+				sendHtml(response, error.statusCode || 500, `<div class="empty-hint">Error: ${templates.escapeHtml(error.message || `${error}`)}</div>`);
+			}
+			return;
+		}
+
 		// --- htmx fragment: navigation tree ---
 		if (url.pathname === '/fragments/nav' && request.method === 'GET') {
 			try {
