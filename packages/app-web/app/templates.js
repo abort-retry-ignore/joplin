@@ -113,10 +113,11 @@ const navigationFragment = (folders, notes, selectedFolderId, selectedNoteId, qu
 		if (hasQuery && !folderNotes.length) return '';
 		const isOpen = folder.id === selectedFolderId || folderNotes.some(n => n.id === selectedNoteId);
 		const count = folderNotes.length;
+		const isExpandable = !!count;
 		const isTrash = folder.id === 'de1e7ede1e7ede1e7ede1e7ede1e7ede';
-		return `<div class="nav-folder collapsed" data-folder-id="${escapeHtml(folder.id)}" data-selected="${isOpen ? '1' : ''}">
-			<div class="nav-folder-row" onclick="toggleNavFolder('${escapeHtml(folder.id)}')">
-				<button type="button" class="nav-folder-toggle" tabindex="-1">&#9656;</button>
+		return `<div class="nav-folder collapsed${isExpandable ? '' : ' nav-folder-empty'}" data-folder-id="${escapeHtml(folder.id)}" data-selected="${isOpen ? '1' : ''}">
+			<div class="nav-folder-row"${isExpandable ? ` onclick="toggleNavFolder('${escapeHtml(folder.id)}')"` : ''}>
+				${isExpandable ? '<button type="button" class="nav-folder-toggle" tabindex="-1">&#9656;</button>' : '<span class="nav-folder-toggle nav-folder-toggle-placeholder"></span>'}
 				<span class="sidebar-item-icon">${isTrash ? '&#128465;' : '&#128193;'}</span>
 				<span class="nav-folder-title">${escapeHtml(folder.title || 'Untitled')}</span>
 				<span class="sidebar-item-count">${count || ''}</span>
@@ -421,6 +422,12 @@ const layoutPage = (options = {}) => {
 			<option value="matrix">Matrix</option>
 			<option value="dark">Dark</option>
 			<option value="light">Light</option>
+			<option value="oled-dark">OLED Dark</option>
+			<option value="solarized-light">Solarized Light</option>
+			<option value="solarized-dark">Solarized Dark</option>
+			<option value="nord">Nord</option>
+			<option value="dracula">Dracula</option>
+			<option value="aritim-dark">Aritim Dark</option>
 		</select>
 		<button class="btn btn-sm btn-secondary"
 			hx-post="/logout"
@@ -430,7 +437,8 @@ const layoutPage = (options = {}) => {
 	</div>
 	<script>
 	if('serviceWorker' in navigator) navigator.serviceWorker.register('/service-worker.js').catch(function(){});
-	function setTheme(t){document.body.classList.forEach(function(c){if(c.startsWith('theme-'))document.body.classList.remove(c)});document.body.classList.add('theme-'+t);localStorage.setItem('joplock-theme',t)}
+	function syncThemeColor(){var meta=document.querySelector('meta[name="theme-color"]');if(!meta)return;var color=getComputedStyle(document.body).getPropertyValue('--theme-color').trim();if(color)meta.setAttribute('content',color)}
+	function setTheme(t){document.body.classList.forEach(function(c){if(c.startsWith('theme-'))document.body.classList.remove(c)});document.body.classList.add('theme-'+t);syncThemeColor();localStorage.setItem('joplock-theme',t)}
 	(function(){var s=localStorage.getItem('joplock-theme');if(s){setTheme(s);var e=document.querySelector('.theme-picker');if(e)e.value=s}})();
 	window.addEventListener('pageshow',function(e){if(e.persisted)window.location.replace('/login')});
 	function setMobileNav(open){var nav=document.getElementById('nav-panel');var bd=document.getElementById('mobile-nav-backdrop');if(!nav||!bd)return;nav.classList.toggle('open',open);bd.classList.toggle('open',open);document.body.classList.toggle('mobile-nav-open',open)}

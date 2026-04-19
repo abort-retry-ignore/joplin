@@ -42,6 +42,15 @@ test('navigationFragment hides empty folders while search query is active', () =
 	assert.ok(!html.includes('Folder 2'));
 });
 
+test('navigationFragment does not make empty folders expandable', () => {
+	const html = navigationFragment([
+		{ id: 'f1', title: 'Folder 1', parentId: '' },
+	], [], '', '');
+	assert.ok(html.includes('nav-folder-empty'));
+	assert.ok(!html.includes('onclick="toggleNavFolder(\'f1\')"'));
+	assert.ok(html.includes('nav-folder-toggle-placeholder'));
+});
+
 test('renderMarkdown rewrites raw html resource images without self-closing slash', () => {
 	const html = renderMarkdown('<img src=":/49a3f012f300473d98a33b97940306b1" alt="x" width="313" height="417">');
 	assert.ok(html.includes('src="/resources/49a3f012f300473d98a33b97940306b1"'));
@@ -61,4 +70,14 @@ test('logged in layout preserves plain square brackets on preview round trip', (
 	assert.ok(html.includes('function htmlToMarkdown(el){'));
 	assert.ok(html.includes('getTurndown().turndown(el.innerHTML)'));
 	assert.ok(html.includes('$1'));
+});
+
+test('logged in layout includes extended Joplin theme options', () => {
+	const html = layoutPage({ user: { email: 'user@example.com', fullName: 'User' }, navContent: '' });
+	assert.ok(html.includes('<option value="oled-dark">OLED Dark</option>'));
+	assert.ok(html.includes('<option value="solarized-light">Solarized Light</option>'));
+	assert.ok(html.includes('<option value="solarized-dark">Solarized Dark</option>'));
+	assert.ok(html.includes('<option value="nord">Nord</option>'));
+	assert.ok(html.includes('<option value="dracula">Dracula</option>'));
+	assert.ok(html.includes('<option value="aritim-dark">Aritim Dark</option>'));
 });
