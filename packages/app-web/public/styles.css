@@ -714,6 +714,12 @@ body.nav-collapsed .editor-titlebar { padding-left: 42px; }
 	color: var(--text-heading);
 	margin: 1em 0 0.5em;
 }
+.editor-preview > h1:first-child,
+.editor-preview > h2:first-child,
+.editor-preview > h3:first-child,
+.editor-preview > h4:first-child,
+.editor-preview > h5:first-child,
+.editor-preview > h6:first-child { margin-top: 0; }
 .editor-preview h1 { font-size: 1.8em; }
 .editor-preview h2 { font-size: 1.5em; }
 .editor-preview h3 { font-size: 1.25em; }

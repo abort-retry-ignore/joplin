@@ -206,6 +206,9 @@ const editorFragment = (note, folders) => {
 			<button type="button" class="tb" title="Quote" onclick="insertPfx('> ')">&#8220;</button>
 			<button type="button" class="tb" title="Horizontal rule" onclick="insertTxt('\\n---\\n')">&#8212;</button>
 			<span class="tb-div"></span>
+			<button type="button" class="tb" title="Insert date" onclick="insertStamp('date')">Date</button>
+			<button type="button" class="tb" title="Insert date and time" onclick="insertStamp('datetime')">DateTime</button>
+			<span class="tb-div"></span>
 			<button type="button" class="tb" title="Link" onclick="insertLink()">&#128279;</button>
 			<button type="button" class="tb" title="Image" onclick="insertImg()">&#128247;</button>
 			<button type="button" class="tb" title="Upload file" onclick="document.getElementById('file-upload').click()">&#128206;</button>
@@ -465,6 +468,8 @@ const layoutPage = (options = {}) => {
 	function syncTitle(){var ti=document.querySelector('.editor-title');var hi=document.querySelector('.editor-title-hidden');if(ti&&hi){hi.value=ti.textContent;hi.dispatchEvent(new Event('input',{bubbles:true}));ti.innerHTML=renderInlineMd(ti.textContent)}}
 	function initAutoTitle(){_titleManual=false;var ti=document.querySelector('.editor-title');if(ti){ti.addEventListener('input',function(){_titleManual=true;syncTitle()})}}
 	function autoTitle(){if(_titleManual)return;var ta=getTA();var ti=document.querySelector('.editor-title');if(!ta||!ti)return;var val=_cleanMd?dirtyForSave(ta.value):ta.value;var lines=val.split('\\n');var first='';for(var i=0;i<lines.length;i++){var l=lines[i].replace(/^#+\\s*/,'').trim();if(l){first=l;break}}if(first&&first!==ti.textContent){ti.innerHTML=renderInlineMd(first);var hi=document.querySelector('.editor-title-hidden');if(hi){hi.value=first;hi.dispatchEvent(new Event('input',{bubbles:true}))}}}
+	function pad2(value){return String(value).padStart(2,'0')}
+	function formatStamp(kind){var d=new Date();var months=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];if(kind==='datetime')return d.getFullYear()+'-'+pad2(d.getMonth()+1)+'-'+pad2(d.getDate())+' '+pad2(d.getHours())+':'+pad2(d.getMinutes());return months[d.getMonth()]+'-'+pad2(d.getDate())+'-'+String(d.getFullYear()).slice(-2)}
 	function renderInlineMd(t){if(!t)return '';var h=t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');h=h.replace(/\\*\\*(.+?)\\*\\*/g,'<strong>$1</strong>');h=h.replace(/\\*(.+?)\\*/g,'<em>$1</em>');h=h.replace(/~~(.+?)~~/g,'<del>$1</del>');h=h.replace(/\\+\\+(.+?)\\+\\+/g,'<u>$1</u>');h=h.replace(/\`([^\`]+)\`/g,'<code>$1</code>');return h}
 	// Image resize via drag handles
 	var _resizing=null;
@@ -478,6 +483,7 @@ const layoutPage = (options = {}) => {
 	function wrapSel(a,b){var pv=getPV();if(pv){var fenced=String.fromCharCode(10)+String.fromCharCode(96,96,96)+String.fromCharCode(10);var inlineCode=String.fromCharCode(96);if(a===fenced&&b===fenced&&transformPVBlock('pre','code'))return;if(a===inlineCode&&b===inlineCode){document.execCommand('insertHTML',false,'<code>'+(window.getSelection().toString()||'code')+'</code>');syncPV();pv.focus();return}var cmdMap={'**':'bold','*':'italic','~~':'strikethrough','++':'underline'};var cmd=cmdMap[a];if(cmd){document.execCommand(cmd,false,null);syncPV();pv.focus();return}}var t=getTA();if(!t)return;var s=t.selectionStart,e=t.selectionEnd,v=t.value,sel=v.substring(s,e)||'text';t.value=v.substring(0,s)+a+sel+b+v.substring(e);t.selectionStart=s+a.length;t.selectionEnd=s+a.length+sel.length;t.focus();t.dispatchEvent(new Event('input',{bubbles:true}))}
 	function insertPfx(p){var pv=getPV();if(pv){var sel=window.getSelection();if(sel.rangeCount){var range=sel.getRangeAt(0);var block=range.startContainer;while(block&&block!==pv&&block.nodeType!==1)block=block.parentNode;if(!block||block===pv)block=range.startContainer.parentNode;var hm=p.match(/^(#{1,6})\\s/);if(hm){var lvl=hm[1].length;var tag='h'+lvl;if(block&&block.parentNode&&block!==pv){var neo=document.createElement(tag);neo.textContent=block.textContent;block.parentNode.replaceChild(neo,block)}else{document.execCommand('insertHTML',false,'<'+tag+'>'+(sel.toString()||'Heading')+'</'+tag+'>')}setTimeout(function(){syncPV();pv.focus()},0);return}if(p==='- [ ] '){var neo=document.createElement('div');neo.className='md-checkbox';var icon=document.createTextNode('\\u2610\\u00a0');neo.appendChild(icon);var sel2=window.getSelection();var range2=sel2.rangeCount?sel2.getRangeAt(0):null;if(range2){range2.deleteContents();range2.insertNode(neo);var r=document.createRange();r.setStart(icon,2);r.collapse(true);sel2.removeAllRanges();sel2.addRange(r)}else{pv.appendChild(neo)}neo.scrollIntoView({block:'nearest'});syncPV();pv.focus();return}if(p==='- '){document.execCommand('insertUnorderedList',false,null);syncPV();pv.focus();return}if(p==='1. '){document.execCommand('insertOrderedList',false,null);syncPV();pv.focus();return}if(p==='> '&&transformPVBlock('blockquote','Quote'))return}return}var t=getTA();if(!t)return;var s=t.selectionStart,ls=t.value.lastIndexOf('\\n',s-1)+1;t.value=t.value.substring(0,ls)+p+t.value.substring(ls);t.selectionStart=t.selectionEnd=s+p.length;t.focus();t.dispatchEvent(new Event('input',{bubbles:true}))}
 	function insertTxt(x){var pv=getPV();if(pv){if(x==='\\n---\\n'){document.execCommand('insertHorizontalRule',false,null);syncPV();pv.focus();return}document.execCommand('insertText',false,x);syncPV();pv.focus();return}var t=getTA();if(!t)return;var s=t.selectionStart;t.value=t.value.substring(0,s)+x+t.value.substring(t.selectionEnd);t.selectionStart=t.selectionEnd=s+x.length;t.focus();t.dispatchEvent(new Event('input',{bubbles:true}))}
+	function insertStamp(kind){insertTxt(formatStamp(kind))}
 	function insertLink(){var pv=getPV();if(pv){var u=prompt('URL:');if(!u)return;var sel=window.getSelection();var txt=sel.toString()||'link';document.execCommand('insertHTML',false,'<a href="'+u+'">'+txt+'</a>');syncPV();pv.focus();return}var u=prompt('URL:');if(u)wrapSel('[',']('+u+')')}
 	function insertImg(){var pv=getPV();if(pv){var u=prompt('Image URL:');if(!u)return;document.execCommand('insertHTML',false,'<img src="'+u+'" alt="image" class="preview-img" />');syncPV();pv.focus();return}var u=prompt('Image URL:');if(u)insertTxt('![image]('+u+')')}
 	function uploadFile(f){if(!f)return;var fd=new FormData();fd.append('file',f);var s=document.getElementById('autosave-status');if(s)s.innerHTML='<span class="autosave-saving">Uploading...</span>';fetch('/fragments/upload',{method:'POST',body:fd}).then(function(r){return r.json()}).then(function(d){if(d.error){alert(d.error);return}var pv=getPV();if(pv&&d.resourceId&&f.type.startsWith('image/')){document.execCommand('insertHTML',false,'<img src="/resources/'+d.resourceId+'" alt="'+f.name+'" class="preview-img" />');syncPV()}else{insertTxt(d.markdown)}}).catch(function(e){alert('Upload failed: '+e.message)}).finally(function(){if(s)s.innerHTML=''})}
@@ -513,9 +519,11 @@ const layoutPage = (options = {}) => {
 	function htmlToMarkdown(el){
 		var md=getTurndown().turndown(el.innerHTML);
 		var nl=String.fromCharCode(10);
+		var headingGapRe=new RegExp('^(#{1,6}[^'+nl+']*)'+nl+nl+'(?=\\S)','gm');
 		md=md.split('<br/>').join('<br>');
 		md=md.split('<br>'+nl).join(nl);
 		while(md.indexOf('<br><br>')>=0)md=md.split('<br><br>').join('<br>'+nl);
+		md=md.replace(headingGapRe,'$1'+nl);
 		var out='';
 		for(var i=0;i<md.length;i++){
 			var ch=md.charAt(i),nx=md.charAt(i+1);

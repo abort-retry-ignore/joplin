@@ -22,9 +22,11 @@ const previewRoundTrip = markdown => {
 	});
 	let md = td.turndown(dom.window.document.getElementById('root').innerHTML);
 	const nl = String.fromCharCode(10);
+	const headingGapRe = new RegExp(`^(#{1,6}[^${nl}]*)${nl}${nl}(?=\\S)`, 'gm');
 	md = md.split('<br/>').join('<br>');
 	md = md.split(`<br>${nl}`).join(nl);
 	while (md.includes('<br><br>')) md = md.split('<br><br>').join(`<br>${nl}`);
+	md = md.replace(headingGapRe, `$1${nl}`);
 	let out = '';
 	for (let i = 0; i < md.length; i++) {
 		const ch = md.charAt(i);
@@ -49,6 +51,11 @@ test('preview round-trip preserves printable ascii', () => {
 
 test('preview round-trip preserves blank-line markers', () => {
 	const body = 'line one\n<br>\nline two\n<br>\n<br>\nline three';
+	assert.equal(previewRoundTrip(body), body);
+});
+
+test('preview round-trip does not add blank line after heading followed by text', () => {
+	const body = '# Heading\nBody';
 	assert.equal(previewRoundTrip(body), body);
 });
 
