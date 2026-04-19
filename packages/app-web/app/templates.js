@@ -240,8 +240,8 @@ const renderMarkdown = (markdown) => {
 	html = html.replace(/&lt;br&gt;/g, '<br>');
 
 	// Passthrough inline <img> HTML tags (restore escaped versions)
-	// Handles: <img src=":/id" ...> and <img src="url" ...>
-	html = html.replace(/&lt;img\s([\s\S]*?)\/&gt;/g, (_m, attrs) => {
+	// Handles: <img src=":/id" ...>, <img src=":/id" ... />, and normal URL src
+	html = html.replace(/&lt;img\s([\s\S]*?)(?:\/)?&gt;/g, (_m, attrs) => {
 		const restored = attrs.replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#39;/g, '\'');
 		const srcMatch = restored.match(/src=":\/([\w]{32})"/);
 		const fixedAttrs = srcMatch ? restored.replace(/src=":\/([\w]{32})"/, `src="/resources/${srcMatch[1]}"`) : restored;

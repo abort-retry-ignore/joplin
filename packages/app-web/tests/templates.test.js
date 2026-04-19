@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { autosaveConflictFragment, editorFragment, navigationFragment } = require('../app/templates');
+const { autosaveConflictFragment, editorFragment, navigationFragment, renderMarkdown } = require('../app/templates');
 
 test('autosaveConflictFragment wires overwrite and create copy actions', () => {
 	const html = autosaveConflictFragment('n1');
@@ -29,4 +29,11 @@ test('navigationFragment shows trash folder empty action', () => {
 	assert.ok(html.includes('hx-post="/fragments/trash/empty"'));
 	assert.ok(html.includes('Empty trash permanently?'));
 	assert.ok(html.includes('&#128465;'));
+});
+
+test('renderMarkdown rewrites raw html resource images without self-closing slash', () => {
+	const html = renderMarkdown('<img src=":/49a3f012f300473d98a33b97940306b1" alt="x" width="313" height="417">');
+	assert.ok(html.includes('src="/resources/49a3f012f300473d98a33b97940306b1"'));
+	assert.ok(html.includes('width="313"'));
+	assert.ok(html.includes('height="417"'));
 });
