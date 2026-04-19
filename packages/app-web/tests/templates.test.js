@@ -31,6 +31,17 @@ test('navigationFragment shows trash folder empty action', () => {
 	assert.ok(html.includes('&#128465;'));
 });
 
+test('navigationFragment hides empty folders while search query is active', () => {
+	const html = navigationFragment([
+		{ id: 'f1', title: 'Folder 1', parentId: '' },
+		{ id: 'f2', title: 'Folder 2', parentId: '' },
+	], [
+		{ id: 'n1', title: 'Note 1', parentId: 'f1' },
+	], '', '', 'note');
+	assert.ok(html.includes('Folder 1'));
+	assert.ok(!html.includes('Folder 2'));
+});
+
 test('renderMarkdown rewrites raw html resource images without self-closing slash', () => {
 	const html = renderMarkdown('<img src=":/49a3f012f300473d98a33b97940306b1" alt="x" width="313" height="417">');
 	assert.ok(html.includes('src="/resources/49a3f012f300473d98a33b97940306b1"'));

@@ -106,9 +106,11 @@ const navigationFragment = (folders, notes, selectedFolderId, selectedNoteId, qu
 		if (!notesByFolder.has(key)) notesByFolder.set(key, []);
 		notesByFolder.get(key).push(note);
 	}
+	const hasQuery = !!`${query || ''}`.trim();
 
 	const folderSections = (folders || []).map(folder => {
 		const folderNotes = notesByFolder.get(folder.id) || [];
+		if (hasQuery && !folderNotes.length) return '';
 		const isOpen = folder.id === selectedFolderId || folderNotes.some(n => n.id === selectedNoteId);
 		const count = folderNotes.length;
 		const isTrash = folder.id === 'de1e7ede1e7ede1e7ede1e7ede1e7ede';
