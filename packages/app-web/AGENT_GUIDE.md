@@ -140,6 +140,13 @@ Owns:
 - Fast deploy: `npm --prefix packages/app-web run deploy:docker`
 - Generate PWA icons/splash assets: `yarn workspace @joplin/app-web run generate:pwa-assets`
 
+### GHCR image publish
+- workflow: `.github/workflows/docker-publish-app-web.yml`
+- image: `ghcr.io/<owner>/joplock-app-web`
+- branch pushes publish branch/sha tags
+- default branch also publishes `latest`
+- tags matching `app-web-v*` publish version tags too
+
 ## Joplin Data Model Notes
 
 - Items table: `items` with `owner_id`, `jop_id`, `jop_parent_id`, `jop_type`, `jop_updated_time`, `content` (bytea, valid JSON)
