@@ -694,6 +694,18 @@ button { cursor: pointer; border: none; background: none; }
 /* Responsive */
 @media (max-width: 768px) {
 	body { font-size: 12px; }
+	.login-page {
+		padding: calc(20px + env(safe-area-inset-top, 0px)) 16px 20px;
+		align-items: flex-start;
+	}
+	.login-card {
+		max-width: 320px;
+		margin: 0 auto;
+	}
+	.login-title { font-size: 30px; }
+	.login-sub { margin-bottom: 16px; }
+	.login-input,
+	.login-btn { font-size: 16px; }
 	.app { display: block; position: relative; height: calc(100vh - 24px); }
 	body.mobile-nav-open { overflow: hidden; }
 	.mobile-topbar {
