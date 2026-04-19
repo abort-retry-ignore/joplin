@@ -62,7 +62,7 @@ const noteListItem = (note, selectedNoteId) => {
 		hx-get="/fragments/editor/${encodeURIComponent(note.id)}"
 		hx-target="#editor-panel"
 		hx-swap="innerHTML"
-		hx-on::after-request="document.querySelectorAll('.notelist-item').forEach(b=>b.classList.remove('active'));this.classList.add('active');if(window.innerWidth<=768)closeMobileNav()">
+		hx-on::after-request="document.querySelectorAll('.notelist-item').forEach(b=>b.classList.remove('active'));this.classList.add('active');if(window.innerWidth<=768)closeNav()">
 		<span class="notelist-item-title">${renderInlineMarkdown(escapeHtml(note.title || 'Untitled'))}</span>
 	</button>`;
 };
@@ -75,7 +75,7 @@ const noteListFragment = (notes, selectedNoteId, folderId) => {
 			hx-vals='${escapeHtml(JSON.stringify({ parentId: folderId }))}'
 			hx-target="#notelist-panel"
 			hx-swap="innerHTML"
-			hx-on::after-request="if(window.innerWidth<=768)closeMobileNav()">+ New note</button>` : ''}
+			hx-on::after-request="if(window.innerWidth<=768)closeNav()">+ New note</button>` : ''}
 		<input type="text" class="notelist-search" placeholder="Search..."
 			hx-get="/fragments/search"
 			hx-trigger="input changed delay:300ms"
@@ -139,12 +139,13 @@ const navigationFragment = (folders, notes, selectedFolderId, selectedNoteId, qu
 	}).join('');
 
 	return `<div class="nav-panel-header">
+		<button type="button" class="nav-toggle-btn" title="Hide panel" onclick="toggleNav()">&#9776;</button>
 		<form class="nav-search-form" hx-get="/fragments/nav" hx-target="#nav-panel" hx-swap="innerHTML">
 			<input type="text" class="notelist-search" id="nav-search" placeholder="Search..." value="${escapeHtml(query)}" name="q" />
 			<button type="submit" class="btn-icon-sm nav-search-btn" title="Search">&#128269;</button>
 		</form>
 		<button class="btn btn-sm" title="New notebook"
-			onclick="event.preventDefault();var t=prompt('Notebook name');if(t&&t.trim()){htmx.ajax('POST','/fragments/folders',{target:'#nav-panel',swap:'innerHTML',values:{title:t.trim()}})}">+ Notebook</button>
+			onclick="event.preventDefault();var t=prompt('Notebook name');if(t&&t.trim()){htmx.ajax('POST','/fragments/folders',{target:'#nav-panel',swap:'innerHTML',values:{title:t.trim()}})}">+ Folder</button>
 	</div><div class="nav-items">${folderSections || '<div class="empty-hint">No notebooks yet</div>'}</div>`;
 };
 
@@ -395,10 +396,8 @@ const layoutPage = (options = {}) => {
 </head>
 <body class="theme-matrix">
 	<div class="app">
-		<div class="mobile-topbar">
-			<button type="button" class="mobile-nav-toggle" title="Show notebooks and notes" onclick="toggleMobileNav()">&#9776;</button>
-		</div>
-		<div class="mobile-nav-backdrop" id="mobile-nav-backdrop" onclick="closeMobileNav()"></div>
+		<div class="mobile-nav-backdrop" id="mobile-nav-backdrop" onclick="closeNav()"></div>
+		<button type="button" class="nav-reopen-btn" id="nav-reopen-btn" title="Show notebooks and notes" onclick="toggleNav()">&#9776;</button>
 		<div class="col-nav" id="nav-panel">
 			${navContent || '<div class="empty-hint">No notebooks yet</div>'}
 		</div>
@@ -423,11 +422,12 @@ const layoutPage = (options = {}) => {
 	</div>
 	<script>
 	if('serviceWorker' in navigator) navigator.serviceWorker.register('/service-worker.js').catch(function(){});
-	function setTheme(t){document.body.className='theme-'+t;localStorage.setItem('joplock-theme',t)}
-	(function(){var s=localStorage.getItem('joplock-theme');if(s){document.body.className='theme-'+s;var e=document.querySelector('.theme-picker');if(e)e.value=s}})();
+	function setTheme(t){document.body.classList.forEach(function(c){if(c.startsWith('theme-'))document.body.classList.remove(c)});document.body.classList.add('theme-'+t);localStorage.setItem('joplock-theme',t)}
+	(function(){var s=localStorage.getItem('joplock-theme');if(s){setTheme(s);var e=document.querySelector('.theme-picker');if(e)e.value=s}})();
 	function setMobileNav(open){var nav=document.getElementById('nav-panel');var bd=document.getElementById('mobile-nav-backdrop');if(!nav||!bd)return;nav.classList.toggle('open',open);bd.classList.toggle('open',open);document.body.classList.toggle('mobile-nav-open',open)}
-	function toggleMobileNav(){var nav=document.getElementById('nav-panel');if(!nav)return;setMobileNav(!nav.classList.contains('open'))}
-	function closeMobileNav(){setMobileNav(false)}
+	function toggleNav(){if(window.innerWidth<=768){var nav=document.getElementById('nav-panel');if(!nav)return;setMobileNav(!nav.classList.contains('open'))}else{document.body.classList.toggle('nav-collapsed');localStorage.setItem('joplock-nav-collapsed',document.body.classList.contains('nav-collapsed')?'1':'')}}
+	function closeNav(){setMobileNav(false)}
+	(function(){if(localStorage.getItem('joplock-nav-collapsed')==='1')document.body.classList.add('nav-collapsed')})();
 	function markEdited(){var s=document.getElementById('autosave-status');if(s)s.innerHTML='<span class="autosave-edited">Edited</span>'}
 	function renderNoteMeta(){var meta=document.getElementById('note-meta');if(!meta)return;var c=Number(meta.getAttribute('data-created-time')||0),u=Number(meta.getAttribute('data-updated-time')||0);if(!c&&!u){meta.textContent='';return}var months=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];var fmt=function(ts){if(!ts)return '';var d=new Date(ts);return String(d.getDate()).padStart(2,'0')+'-'+months[d.getMonth()]+'-'+String(d.getFullYear()).slice(-2)};meta.textContent='Created '+fmt(c)+' | Edited '+fmt(u)}
 	function navFolderState(){try{return JSON.parse(localStorage.getItem('joplock-nav-folders')||'{}')}catch(e){return {}}}
@@ -499,7 +499,7 @@ const layoutPage = (options = {}) => {
 		pv.addEventListener('keydown',function(e){if(e.key==='Enter'){var sel=window.getSelection();if(!sel.rangeCount)return;var range=sel.getRangeAt(0);var node=range.startContainer;var el=node.nodeType===3?node.parentElement:node;var cb=el&&el.closest?el.closest('.md-checkbox'):null;if(!cb&&node.nodeType===1&&range.startOffset>0){var prev=node.childNodes[range.startOffset-1];if(prev&&prev.nodeType===1&&prev.classList&&prev.classList.contains('md-checkbox'))cb=prev}if(!cb)return;e.preventDefault();var label=(cb.textContent||'').replace(/^[\\u2610\\u2611][\\u00a0 ]*/,'').replace(/\\u00a0|\\s/g,'');if(!label){var para=document.createElement('p');para.innerHTML='<br>';if(cb.parentNode)cb.parentNode.replaceChild(para,cb);var rp=document.createRange();rp.setStart(para,0);rp.collapse(true);sel.removeAllRanges();sel.addRange(rp);para.scrollIntoView({block:'nearest'});syncPV();return}var neo=document.createElement('div');neo.className='md-checkbox';var tn=document.createTextNode('\u2610\u00a0');neo.appendChild(tn);cb.parentNode.insertBefore(neo,cb.nextSibling);var r=document.createRange();r.setStart(tn,2);r.collapse(true);sel.removeAllRanges();sel.addRange(r);neo.scrollIntoView({block:'nearest'});syncPV();return}});
 		// Scroll to keep cursor visible while typing
 		pv.addEventListener('input',function(){var sel=window.getSelection();if(sel&&sel.rangeCount){var r=sel.getRangeAt(0).getBoundingClientRect();var pr=pv.getBoundingClientRect();if(r.bottom>pr.bottom-8)pv.scrollTop+=r.bottom-pr.bottom+24}})}
-	function initEditorPanel(){var form=document.getElementById('note-editor-form');if(!form||form.dataset.editorInit)return;form.dataset.editorInit='1';if(window.innerWidth<=768)closeMobileNav();var status=document.getElementById('autosave-status');if(status&&!status.innerHTML)status.innerHTML='<span class="autosave-ok">Saved</span>';form.addEventListener('input',function(){markEdited()});initAutoTitle();renderNoteMeta();var ta=getTA();if(ta){ta.addEventListener('input',function(){autoTitle()});if(_cleanMd)ta.value=cleanForDisplay(ta.value)}var pv=document.getElementById('note-preview');if(pv&&pv.style.display!=='none'){activatePV(pv)}var btn=document.getElementById('clean-md-toggle');if(btn){btn.style.display=pv&&pv.style.display!=='none'?'none':'inline-flex';if(_cleanMd)btn.classList.add('active')}}
+	function initEditorPanel(){var form=document.getElementById('note-editor-form');if(!form||form.dataset.editorInit)return;form.dataset.editorInit='1';if(window.innerWidth<=768)closeNav();var status=document.getElementById('autosave-status');if(status&&!status.innerHTML)status.innerHTML='<span class="autosave-ok">Saved</span>';form.addEventListener('input',function(){markEdited()});initAutoTitle();renderNoteMeta();var ta=getTA();if(ta){ta.addEventListener('input',function(){autoTitle()});if(_cleanMd)ta.value=cleanForDisplay(ta.value)}var pv=document.getElementById('note-preview');if(pv&&pv.style.display!=='none'){activatePV(pv)}var btn=document.getElementById('clean-md-toggle');if(btn){btn.style.display=pv&&pv.style.display!=='none'?'none':'inline-flex';if(_cleanMd)btn.classList.add('active')}}
 	function initNavPanel(){var state=navFolderState();document.querySelectorAll('.nav-folder').forEach(function(el){var id=el.getAttribute('data-folder-id');var selected=el.getAttribute('data-selected')==='1';var open=state[id]===true||state[id]==='1'||state[id]===1;if(state[id]===undefined)open=false;if(selected)open=true;el.classList.toggle('collapsed',!open)})}
 	document.body.addEventListener('htmx:afterSettle',function(){initNavPanel();initEditorPanel()});
 	window.addEventListener('load',function(){initNavPanel();initEditorPanel()});
