@@ -238,6 +238,9 @@ const renderMarkdown = (markdown) => {
 	// Passthrough <br> tags (used for blank line preservation in Joplin)
 	html = html.replace(/&lt;br&gt;/g, '<br>');
 
+	// Passthrough &nbsp; (common in notes pasted from web/rich text)
+	html = html.replace(/&amp;nbsp;/g, '&nbsp;');
+
 	// Passthrough inline <img> HTML tags (restore escaped versions)
 	// Handles: <img src=":/id" ...>, <img src=":/id" ... />, and normal URL src
 	html = html.replace(/&lt;img\s([\s\S]*?)(?:\/)?&gt;/g, (_m, attrs) => {
