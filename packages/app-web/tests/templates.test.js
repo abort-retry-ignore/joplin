@@ -55,3 +55,10 @@ test('logged out layout clears client storage and service worker state', () => {
 	assert.ok(html.includes('navigator.serviceWorker.getRegistrations'));
 	assert.ok(html.includes('caches.keys()'));
 });
+
+test('logged in layout preserves plain square brackets on preview round trip', () => {
+	const html = layoutPage({ user: { email: 'user@example.com', fullName: 'User' }, navContent: '' });
+	assert.ok(html.includes('function htmlToMarkdown(el){'));
+	assert.ok(html.includes('getTurndown().turndown(el.innerHTML)'));
+	assert.ok(html.includes('$1'));
+});
