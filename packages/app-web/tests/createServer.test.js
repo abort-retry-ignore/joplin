@@ -530,8 +530,26 @@ test('GET /resources/:id serves binary blob with correct content-type', async ()
 	}, async port => {
 		const res = await request(port, { path: '/resources/abcdef01234567890abcdef012345678' });
 		assert.equal(res.statusCode, 200);
+		assert.equal(res.headers['cache-control'], 'no-store');
 		assert.equal(res.headers['content-type'], 'image/png');
 		assert.ok(res.rawBody.equals(blobData));
+	});
+});
+
+test('POST /logout clears cookie and sends client cleanup headers', async () => {
+	await withServer({}, async port => {
+		const res = await request(port, {
+			path: '/logout',
+			method: 'POST',
+			headers: { Cookie: 'sessionId=test-session' },
+		});
+		assert.equal(res.statusCode, 200);
+		assert.equal(res.headers['cache-control'], 'no-store');
+		assert.equal(res.headers['clear-site-data'], '"cache", "storage"');
+		const setCookie = Array.isArray(res.headers['set-cookie']) ? res.headers['set-cookie'].join('; ') : res.headers['set-cookie'];
+		assert.ok(setCookie.includes('sessionId='));
+		assert.ok(setCookie.includes('Max-Age=0'));
+		assert.ok(res.body.includes('localStorage.removeItem'));
 	});
 });
 

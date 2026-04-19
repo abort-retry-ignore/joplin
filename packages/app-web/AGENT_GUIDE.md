@@ -15,6 +15,7 @@ Use this guide when working on `packages/app-web` and its integration with stock
 - Reuses existing Joplin Server auth/session/user model through compatible sidecar logic
 - Keeps compatibility with desktop/mobile/CLI clients (same data, same DB)
 - Browser is thin and untrusted — no authoritative note/resource storage
+- Shared-browser safety matters: after logout, note/resource data must be purged from client-visible storage/cache paths as much as the platform allows
 - Installable PWA shell, but no offline notes/editing
 - UI is distinct from other Joplin clients
 - Uses the same Postgres database as Joplin Server (no separate DB)
@@ -69,6 +70,7 @@ Use this guide when working on `packages/app-web` and its integration with stock
 5. Do not build new browser-local DB architecture.
 6. `packages/app-web` should expose and consume app-oriented APIs, not raw SQL or sync API for normal UI behavior.
 7. Thin client does not need feature parity with desktop/mobile.
+8. Treat logout as a destructive client cleanup event on shared machines: clear app storage, avoid note/resource caching, and do not rely on stale authenticated DOM.
 
 ## Service Responsibilities
 

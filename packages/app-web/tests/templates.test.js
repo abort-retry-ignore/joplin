@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { autosaveConflictFragment, editorFragment, navigationFragment, renderMarkdown } = require('../app/templates');
+const { autosaveConflictFragment, editorFragment, layoutPage, navigationFragment, renderMarkdown } = require('../app/templates');
 
 test('autosaveConflictFragment wires overwrite and create copy actions', () => {
 	const html = autosaveConflictFragment('n1');
@@ -47,4 +47,11 @@ test('renderMarkdown rewrites raw html resource images without self-closing slas
 	assert.ok(html.includes('src="/resources/49a3f012f300473d98a33b97940306b1"'));
 	assert.ok(html.includes('width="313"'));
 	assert.ok(html.includes('height="417"'));
+});
+
+test('logged out layout clears client storage and service worker state', () => {
+	const html = layoutPage({ user: null, loginError: '' });
+	assert.ok(html.includes('localStorage.removeItem'));
+	assert.ok(html.includes('navigator.serviceWorker.getRegistrations'));
+	assert.ok(html.includes('caches.keys()'));
 });

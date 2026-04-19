@@ -41,6 +41,8 @@ const sendJson = (response, statusCode, body) => {
 	});
 };
 
+const expiredSessionCookie = () => 'sessionId=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT';
+
 const readBody = request => {
 	return new Promise((resolve, reject) => {
 		let body = '';
@@ -410,7 +412,7 @@ const createServer = options => {
 				response.writeHead(200, {
 					'Content-Type': mime,
 					'Content-Length': blob.length,
-					'Cache-Control': 'private, max-age=3600',
+					'Cache-Control': 'no-store',
 				});
 				response.end(blob);
 			} catch (error) {
@@ -596,10 +598,20 @@ const createServer = options => {
 				method: 'POST',
 				headers,
 			}, () => {
-				sendHtml(response, 200, templates.loggedOutPage(joplinPublicBasePath));
+				send(response, 200, templates.loggedOutPage(joplinPublicBasePath), {
+					'Cache-Control': 'no-store',
+					'Clear-Site-Data': '"cache", "storage"',
+					'Content-Type': 'text/html; charset=utf-8',
+					'Set-Cookie': expiredSessionCookie(),
+				});
 			});
 			upstreamReq.on('error', () => {
-				sendHtml(response, 200, templates.loggedOutPage(joplinPublicBasePath));
+				send(response, 200, templates.loggedOutPage(joplinPublicBasePath), {
+					'Cache-Control': 'no-store',
+					'Clear-Site-Data': '"cache", "storage"',
+					'Content-Type': 'text/html; charset=utf-8',
+					'Set-Cookie': expiredSessionCookie(),
+				});
 			});
 			request.pipe(upstreamReq);
 			return;
@@ -788,6 +800,7 @@ const createServer = options => {
 				}
 				const session = JSON.parse(loginResult.body);
 				response.writeHead(302, {
+					'Cache-Control': 'no-store',
 					'Set-Cookie': `sessionId=${session.id}; Path=/; HttpOnly; SameSite=Lax; Max-Age=43200`,
 					Location: '/',
 				});

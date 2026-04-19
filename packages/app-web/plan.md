@@ -10,6 +10,7 @@ Requirements:
 - same user data visible across web, desktop, mobile, CLI
 - minimal browser storage
 - no offline note cache
+- shared-browser safe: after logout, note/resource data must not remain available via local storage, client cache, or restored authenticated UI state
 - PWA shell support
 - thin client UI distinct from other Joplin clients
 - keep compatibility with normal Joplin sync clients

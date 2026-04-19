@@ -356,6 +356,14 @@ const layoutPage = (options = {}) => {
 	<title>Joplock</title>
 </head>
 <body class="theme-matrix">
+	<script>
+	(function(){
+		var keys=['joplock-theme','joplock-nav-collapsed','joplock-nav-folders','joplock-clean-md'];
+		try{keys.forEach(function(k){localStorage.removeItem(k)})}catch(e){}
+		try{if('serviceWorker' in navigator){navigator.serviceWorker.getRegistrations().then(function(rs){return Promise.all(rs.map(function(r){return r.unregister()}))}).catch(function(){})}}catch(e){}
+		try{if('caches' in window){caches.keys().then(function(keys){return Promise.all(keys.map(function(k){return caches.delete(k)}))}).catch(function(){})}}catch(e){}
+	})();
+	</script>
 	<div class="login-page">
 		<div class="login-card">
 			<h1 class="login-title">Joplock</h1>
@@ -424,6 +432,7 @@ const layoutPage = (options = {}) => {
 	if('serviceWorker' in navigator) navigator.serviceWorker.register('/service-worker.js').catch(function(){});
 	function setTheme(t){document.body.classList.forEach(function(c){if(c.startsWith('theme-'))document.body.classList.remove(c)});document.body.classList.add('theme-'+t);localStorage.setItem('joplock-theme',t)}
 	(function(){var s=localStorage.getItem('joplock-theme');if(s){setTheme(s);var e=document.querySelector('.theme-picker');if(e)e.value=s}})();
+	window.addEventListener('pageshow',function(e){if(e.persisted)window.location.replace('/login')});
 	function setMobileNav(open){var nav=document.getElementById('nav-panel');var bd=document.getElementById('mobile-nav-backdrop');if(!nav||!bd)return;nav.classList.toggle('open',open);bd.classList.toggle('open',open);document.body.classList.toggle('mobile-nav-open',open)}
 	function toggleNav(){if(window.innerWidth<=768){var nav=document.getElementById('nav-panel');if(!nav)return;setMobileNav(!nav.classList.contains('open'))}else{document.body.classList.toggle('nav-collapsed');localStorage.setItem('joplock-nav-collapsed',document.body.classList.contains('nav-collapsed')?'1':'')}}
 	function closeNav(){setMobileNav(false)}
