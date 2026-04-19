@@ -536,7 +536,7 @@ test('GET /resources/:id serves binary blob with correct content-type', async ()
 	});
 });
 
-test('POST /logout clears cookie and sends client cleanup headers', async () => {
+test('POST /logout returns logged-out page and clears client state', async () => {
 	await withServer({}, async port => {
 		const res = await request(port, {
 			path: '/logout',
@@ -549,7 +549,26 @@ test('POST /logout clears cookie and sends client cleanup headers', async () => 
 		const setCookie = Array.isArray(res.headers['set-cookie']) ? res.headers['set-cookie'].join('; ') : res.headers['set-cookie'];
 		assert.ok(setCookie.includes('sessionId='));
 		assert.ok(setCookie.includes('Max-Age=0'));
-		assert.ok(res.body.includes('localStorage.removeItem'));
+		assert.ok(res.body.includes('Cleanup complete'));
+		assert.ok(res.body.includes('Go to login'));
+	});
+});
+
+test('GET /logout returns logged-out page and clears client state', async () => {
+	await withServer({}, async port => {
+		const res = await request(port, {
+			path: '/logout',
+			method: 'GET',
+			headers: { Cookie: 'sessionId=test-session' },
+		});
+		assert.equal(res.statusCode, 200);
+		assert.equal(res.headers['cache-control'], 'no-store');
+		assert.equal(res.headers['clear-site-data'], '"cache", "storage"');
+		const setCookie = Array.isArray(res.headers['set-cookie']) ? res.headers['set-cookie'].join('; ') : res.headers['set-cookie'];
+		assert.ok(setCookie.includes('sessionId='));
+		assert.ok(setCookie.includes('Max-Age=0'));
+		assert.ok(res.body.includes('Cleanup complete'));
+		assert.ok(res.body.includes('Go to login'));
 	});
 });
 

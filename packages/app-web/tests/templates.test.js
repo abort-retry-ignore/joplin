@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const vm = require('node:vm');
 const fs = require('node:fs');
 const path = require('node:path');
-const { autosaveConflictFragment, editorFragment, layoutPage, navigationFragment, renderMarkdown } = require('../app/templates');
+const { autosaveConflictFragment, editorFragment, layoutPage, loggedOutPage, navigationFragment, renderMarkdown } = require('../app/templates');
 
 test('autosaveConflictFragment wires overwrite and create copy actions', () => {
 	const html = autosaveConflictFragment('n1');
@@ -76,6 +76,32 @@ test('logged out layout clears client storage and service worker state', () => {
 	assert.ok(html.includes('caches.keys()'));
 });
 
+
+test('logged out page shows cleanup progress and login link', () => {
+	const html = loggedOutPage('');
+	assert.ok(html.includes('Logging out'));
+	assert.ok(html.includes('Clear local storage'));
+	assert.ok(html.includes('Remove service workers'));
+	assert.ok(html.includes('Clear cached assets'));
+	assert.ok(html.includes('Cleanup complete'));
+	assert.ok(html.includes('onclick="toggleLogoutDetail(\'session\')"'));
+	assert.ok(html.includes('id="logout-detail-session"'));
+	assert.ok(html.includes('Remove local preferences like theme'));
+	assert.ok(html.includes('id="logout-login-link"'));
+	assert.ok(html.includes('Go to login'));
+	assert.ok(html.includes('check.className=\'logout-step-check\''));
+	assert.ok(html.includes('check.textContent=\'✓\''));
+	assert.ok(html.includes('window.toggleLogoutDetail=function(step)'));
+	assert.ok(html.includes('if(loginLink)loginLink.style.display=\'inline-flex\''));
+});
+
+test('logged in layout uses logout navigation link', () => {
+	const html = layoutPage({ user: { email: 'user@example.com', fullName: 'User' }, navContent: '' });
+	assert.ok(html.includes('<a href="/logout" class="btn btn-sm btn-secondary logout-link">Logout</a>'));
+	assert.ok(!html.includes('logoutNow(event)'));
+	assert.ok(!html.includes('hx-post="/logout"'));
+});
+
 test('logged in layout preserves plain square brackets on preview round trip', () => {
 	const html = layoutPage({ user: { email: 'user@example.com', fullName: 'User' }, navContent: '' });
 	assert.ok(html.includes('function htmlToMarkdown(el){'));
@@ -120,6 +146,11 @@ test('styles define ordered list spacing and white matrix note text', () => {
 	assert.ok(css.includes('--text: #ffffff;'));
 	assert.ok(css.includes('.editor-preview ul, .editor-preview ol { padding-left: 1.5em; margin: 0.5em 0; }'));
 	assert.ok(css.includes('.editor-preview > h1:first-child,'));
+	assert.ok(css.includes('.logout-progress {'));
+	assert.ok(css.includes('.logout-step.done {'));
+	assert.ok(css.includes('.logout-step-check {'));
+	assert.ok(css.includes('.logout-detail {'));
+	assert.ok(css.includes('.logout-detail.open {'));
 	assert.ok(css.includes('--font-size-note: 15px;'));
 	assert.ok(css.includes('--font-size-code: 12px;'));
 	assert.ok(css.includes('font-size: var(--font-size-note);'));

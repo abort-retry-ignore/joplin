@@ -581,7 +581,15 @@ const createServer = options => {
 		}
 
 		// --- Logout (htmx) ---
-		if (url.pathname === '/logout' && request.method === 'POST') {
+		if (url.pathname === '/logout' && (request.method === 'POST' || request.method === 'GET')) {
+			const sendLoggedOutPage = () => {
+				send(response, 200, templates.loggedOutPage(joplinPublicBasePath), {
+					'Cache-Control': 'no-store',
+					'Clear-Site-Data': '"cache", "storage"',
+					'Content-Type': 'text/html; charset=utf-8',
+					'Set-Cookie': expiredSessionCookie(),
+				});
+			};
 			// Proxy logout to Joplin Server then return logged-out page
 			const logoutUrl = new URL(joplinServerOrigin);
 			const headers = { ...request.headers };
@@ -598,22 +606,16 @@ const createServer = options => {
 				method: 'POST',
 				headers,
 			}, () => {
-				send(response, 200, templates.loggedOutPage(joplinPublicBasePath), {
-					'Cache-Control': 'no-store',
-					'Clear-Site-Data': '"cache", "storage"',
-					'Content-Type': 'text/html; charset=utf-8',
-					'Set-Cookie': expiredSessionCookie(),
-				});
+				sendLoggedOutPage();
 			});
 			upstreamReq.on('error', () => {
-				send(response, 200, templates.loggedOutPage(joplinPublicBasePath), {
-					'Cache-Control': 'no-store',
-					'Clear-Site-Data': '"cache", "storage"',
-					'Content-Type': 'text/html; charset=utf-8',
-					'Set-Cookie': expiredSessionCookie(),
-				});
+				sendLoggedOutPage();
 			});
-			request.pipe(upstreamReq);
+			if (request.method === 'POST') {
+				request.pipe(upstreamReq);
+			} else {
+				upstreamReq.end();
+			}
 			return;
 		}
 
@@ -813,6 +815,14 @@ const createServer = options => {
 		}
 
 		if (url.pathname === '/login' && request.method === 'GET') {
+			if (url.searchParams.get('loggedOut') === '1') {
+				sendHtml(response, 200, templates.layoutPage({
+					user: null,
+					joplinBasePath: joplinPublicBasePath,
+					loginError: url.searchParams.get('error') || '',
+				}));
+				return;
+			}
 			const auth = await authenticatedUser(request);
 			if (!auth.error && auth.user) {
 				response.writeHead(302, { Location: '/' });

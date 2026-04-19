@@ -432,11 +432,7 @@ const layoutPage = (options = {}) => {
 			<option value="dracula">Dracula</option>
 			<option value="aritim-dark">Aritim Dark</option>
 		</select>
-		<button class="btn btn-sm btn-secondary"
-			hx-post="/logout"
-			hx-target="body"
-			hx-swap="innerHTML"
-			hx-push-url="/">Logout</button>
+		<a href="/logout" class="btn btn-sm btn-secondary logout-link">Logout</a>
 	</div>
 	<script>
 	if('serviceWorker' in navigator) navigator.serviceWorker.register('/service-worker.js').catch(function(){});
@@ -551,7 +547,66 @@ const layoutPage = (options = {}) => {
 </html>`;
 };
 
-const loggedOutPage = (joplinBasePath) => layoutPage({ user: null, joplinBasePath });
+const loggedOutPage = () => `<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="utf-8" />
+	<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+	<meta name="theme-color" content="#08110b" />
+	<meta name="apple-mobile-web-app-capable" content="yes" />
+	<meta name="mobile-web-app-capable" content="yes" />
+	<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+	<meta name="apple-mobile-web-app-title" content="Joplock" />
+	<link rel="manifest" href="/manifest.webmanifest" />
+	<link rel="icon" href="/icon.svg" type="image/svg+xml" />
+	<link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+	${appleSplashLinks}
+	<link rel="stylesheet" href="/styles.css" />
+	<title>Logging out...</title>
+</head>
+<body class="theme-matrix">
+	<div class="login-page logout-page">
+		<div class="login-card logout-card">
+			<h1 class="login-title">Logging out</h1>
+			<p class="login-sub">Clearing local data and ending this session.</p>
+			<div class="logout-progress" id="logout-progress">
+				<button type="button" class="logout-step" data-step="session" onclick="toggleLogoutDetail('session')">End server session</button>
+				<div class="logout-detail" id="logout-detail-session">Invalidate the current Joplock session and ask the upstream Joplin Server to end its session too.</div>
+				<button type="button" class="logout-step" data-step="storage" onclick="toggleLogoutDetail('storage')">Clear local storage</button>
+				<div class="logout-detail" id="logout-detail-storage">Remove local preferences like theme, panel state, folder expansion state, and markdown cleaning preference.</div>
+				<button type="button" class="logout-step" data-step="workers" onclick="toggleLogoutDetail('workers')">Remove service workers</button>
+				<div class="logout-detail" id="logout-detail-workers">Unregister the web app service worker so cached shell logic stops controlling future visits.</div>
+				<button type="button" class="logout-step" data-step="cache" onclick="toggleLogoutDetail('cache')">Clear cached assets</button>
+				<div class="logout-detail" id="logout-detail-cache">Delete browser cache entries created by the app so another user on this device starts from a clean shell.</div>
+				<button type="button" class="logout-step" data-step="done" onclick="toggleLogoutDetail('done')">Cleanup complete</button>
+				<div class="logout-detail" id="logout-detail-done">All client-side cleanup steps have finished. Use the button below to return to the login screen.</div>
+			</div>
+			<a href="/login?loggedOut=1" class="btn btn-primary login-btn logout-login-link" id="logout-login-link" style="display:none">Go to login</a>
+		</div>
+	</div>
+	<script>
+	(function(){
+		var status=document.getElementById('logout-progress');
+		var loginLink=document.getElementById('logout-login-link');
+		function mark(step,state){var el=status&&status.querySelector('[data-step="'+step+'"]');if(!el)return;el.className='logout-step '+state;if(state==='done'&&!el.querySelector('.logout-step-check')){var check=document.createElement('span');check.className='logout-step-check';check.textContent='\u2713';el.appendChild(check)}}
+		window.toggleLogoutDetail=function(step){var el=document.getElementById('logout-detail-'+step);if(!el)return;el.classList.toggle('open')}
+		async function run(){
+			mark('session','done');
+			var keys=['joplock-theme','joplock-nav-collapsed','joplock-nav-folders','joplock-clean-md'];
+			try{keys.forEach(function(k){localStorage.removeItem(k)})}catch(e){}
+			mark('storage','done');
+			try{if('serviceWorker' in navigator){var rs=await navigator.serviceWorker.getRegistrations();await Promise.all(rs.map(function(r){return r.unregister()}))}}catch(e){}
+			mark('workers','done');
+			try{if('caches' in window){var names=await caches.keys();await Promise.all(names.map(function(k){return caches.delete(k)}))}}catch(e){}
+			mark('cache','done');
+			mark('done','done');
+			if(loginLink)loginLink.style.display='inline-flex';
+		}
+		run().catch(function(){if(loginLink)loginLink.style.display='inline-flex'});
+	})();
+	</script>
+</body>
+</html>`;
 
 module.exports = {
 	escapeHtml,
