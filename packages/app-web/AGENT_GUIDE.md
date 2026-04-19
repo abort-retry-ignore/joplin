@@ -48,18 +48,21 @@ Use this guide when working on `packages/app-web` and its integration with stock
 - **Column 3 (flex)**: Editor — folder dropdown (move notes), note title (contenteditable with inline markdown), toolbar, preview/edit toggle, autosave status, delete button
 - **Status bar**: username, theme picker, logout
 
-3 themes: Matrix (green on black), Dark (blue-gray), Light (white/blue). Persisted in localStorage.
+Theme picker includes Matrix, Dark, Light, OLED Dark, Solarized Light, Solarized Dark, Nord, Dracula, and Aritim Dark. Theme choice is persisted in localStorage.
 
 ### Editor Behavior
 
 - Notes open in **preview mode by default** (contenteditable rendered markdown)
 - Toggle pencil/eye icon switches between preview and raw textarea
 - Toolbar works in both modes (execCommand in preview, text insertion in textarea)
+- Preview toolbar uses real block transforms for ordered lists, blockquotes, and code blocks
 - Image resize via mouse drag in preview mode
 - Auto-title: first non-empty line of body populates the title (unless manually edited)
 - Title field is contenteditable div with inline markdown rendering (bold, italic, strikethrough, underline, code)
 - Blank lines are stored as `<br>` in markdown; the sticky `md` toggle hides them in edit mode via `cleanForDisplay()` / `dirtyForSave()`
 - Checkbox rows in preview are `div.md-checkbox`; click only the icon area to toggle, label text should remain editable/selectable
+- Preview note/body font size and preview code font size are separate CSS tokens: `--font-size-note` and `--font-size-code`
+- Folder names use theme accent color; note titles use normal text color
 
 ## Core Rules
 
@@ -123,7 +126,7 @@ Owns:
 
 ### Static Assets
 - `public/htmx.min.js` — htmx 2.0.4 (~50KB, ~14KB gzipped)
-- `public/styles.css` — 3 themes, 3-column layout, editor/preview styles, collapsible sidebar
+- `public/styles.css` — theme tokens, 3-column layout, editor/preview styles, collapsible sidebar
 - `public/icon.svg`, `public/manifest.webmanifest`, `public/service-worker.js`
 
 ### Tests
@@ -170,6 +173,18 @@ Checkboxes in preview use a leading icon text node (`☐`/`☑`) plus `\u00a0` s
 - Enter handling must also detect the caret when the selection sits in the parent container immediately after a checkbox node
 - Click handling must only toggle when the click lands on the icon area; clicking label text should place the caret normally
 - `activatePV()` can run repeatedly after preview/edit toggles, so event listeners must be guarded with `pv.dataset.pvInit` to avoid duplicate handlers
+- Checkbox rows are visually indented to line up with ordered and unordered lists
+
+### Preview toolbar block handling
+- Ordered list preview action must use `insertOrderedList`, not `insertUnorderedList`
+- Quote and code block preview actions use block replacement helpers instead of inserting literal markdown text into the DOM
+- Inline code in preview inserts a `<code>` wrapper directly
+- Inline template JS is fragile: validate emitted script parsing when touching escaping-heavy logic
+
+### Theme and typography tokens
+- Matrix theme note text is white; folder names stay green via accent coloring
+- Folder names and note titles intentionally use different theme tokens so future settings/theme work can tune them independently
+- Preview note/body size and preview code size are separate CSS tokens to support future user settings
 
 ### Preview-default editor
 Notes open in contenteditable preview mode. This avoids showing raw markdown to users who just want to read/browse. The pencil icon switches to raw textarea for advanced editing.
@@ -241,7 +256,7 @@ Additional:
 
 ## Verification
 
-- Run tests: `node --test packages/app-web/tests/*.test.js` (31 tests, all should pass)
+- Run tests: `node --test packages/app-web/tests/**/*.test.js`
 - Rebuild: `docker compose -f docker-compose.app-web.yml --env-file .env.app-web up -d --build app-web`
 - Fast deploy: `npm --prefix packages/app-web run deploy:docker`
 - Live: `https://joplinweb.021407.xyz`
@@ -262,14 +277,19 @@ Additional:
 - Inline markdown rendering in titles and note list
 - Blank line preservation (stable round-trip)
 - Underline support (`++text++`) in renderers and Turndown
-- Ordered list rendering
+- Ordered list rendering and preview insertion
+- Preview quote/code block transforms
+- Preview inline code insertion
 - Preview checkbox toggle and Enter behavior fixes
-- 3 themes with persistence
+- Checkbox indentation aligned with other lists
+- Theme token expansion and browser theme-color syncing
+- Folder/note color separation
+- Preview note/code font size tokens
 - Autosave (1s debounce)
 - Folder selector (move notes between folders)
 - Keyboard shortcuts (Ctrl+B, Ctrl+I)
 - PWA manifest and service worker
-- 31 passing tests
+- 56 passing tests
 - Live deployment
 
 ### Git History

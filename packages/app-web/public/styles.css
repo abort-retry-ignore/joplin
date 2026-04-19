@@ -11,7 +11,7 @@
 	--bg-active: rgba(50,255,112,0.16);
 	--overlay: rgba(0,0,0,0.45);
 	--shadow: rgba(0,0,0,0.25);
-	--text: #c8f0c8;
+	--text: #ffffff;
 	--text-dim: #6a9a6a;
 	--text-muted: #6a9a6a;
 	--text-heading: #e0ffe0;
@@ -254,6 +254,8 @@
 *,*::before,*::after { box-sizing: border-box; margin: 0; padding: 0; }
 html, body { height: 100%; }
 body {
+	--font-size-note: 15px;
+	--font-size-code: 12px;
 	font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
 	font-size: 13px;
 	line-height: 1.4;
@@ -387,6 +389,7 @@ body.nav-collapsed .editor-titlebar { padding-left: 42px; }
 	text-overflow: ellipsis;
 	white-space: nowrap;
 	font-weight: 600;
+	color: var(--accent);
 }
 
 .nav-folder .sidebar-item-icon {
@@ -503,6 +506,7 @@ body.nav-collapsed .editor-titlebar { padding-left: 42px; }
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
+	color: var(--accent);
 }
 
 .sidebar-item-count {
@@ -571,6 +575,7 @@ body.nav-collapsed .editor-titlebar { padding-left: 42px; }
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
+	color: var(--text);
 }
 
 /* Column 3: Editor */
@@ -693,7 +698,7 @@ body.nav-collapsed .editor-titlebar { padding-left: 42px; }
 	flex: 1;
 	padding: 16px 20px;
 	overflow-y: auto;
-	font-size: 15px;
+	font-size: var(--font-size-note);
 	line-height: 1.7;
 	color: var(--text);
 	outline: none;
@@ -718,8 +723,8 @@ body.nav-collapsed .editor-titlebar { padding-left: 42px; }
 	background: var(--bg-hover);
 	padding: 2px 5px;
 	border-radius: 3px;
-	font-family: 'SF Mono', 'Fira Code', Consolas, monospace;
-	font-size: 0.9em;
+	font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', Consolas, monospace;
+	font-size: var(--font-size-code);
 }
 .editor-preview pre {
 	background: var(--bg-hover);
@@ -727,6 +732,8 @@ body.nav-collapsed .editor-titlebar { padding-left: 42px; }
 	border-radius: 6px;
 	overflow-x: auto;
 	margin: 1em 0;
+	font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', Consolas, monospace;
+	font-size: var(--font-size-code);
 }
 .editor-preview pre code { background: none; padding: 0; }
 .editor-preview blockquote {
@@ -736,9 +743,13 @@ body.nav-collapsed .editor-titlebar { padding-left: 42px; }
 	color: var(--text-dim);
 }
 .editor-preview hr { border: none; border-top: 1px solid var(--border); margin: 1.5em 0; }
-.editor-preview ul { padding-left: 1.5em; margin: 0.5em 0; }
+.editor-preview ul, .editor-preview ol { padding-left: 1.5em; margin: 0.5em 0; }
 .editor-preview li { margin: 0.25em 0; }
-.editor-preview .md-checkbox { margin: 0.25em 0; }
+.editor-preview .md-checkbox {
+	margin: 0.25em 0;
+	padding-left: 1.5em;
+	text-indent: -1.5em;
+}
 .editor-preview .md-checkbox.checked { text-decoration: line-through; opacity: 0.7; }
 .preview-img { max-width: 100%; border-radius: 6px; margin: 8px 0; cursor: default; }
 .editor-preview[contenteditable="true"] .preview-img { cursor: nwse-resize; border: 1px solid transparent; }

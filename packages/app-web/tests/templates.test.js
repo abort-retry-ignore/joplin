@@ -1,5 +1,8 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const vm = require('node:vm');
+const fs = require('node:fs');
+const path = require('node:path');
 const { autosaveConflictFragment, editorFragment, layoutPage, navigationFragment, renderMarkdown } = require('../app/templates');
 
 test('autosaveConflictFragment wires overwrite and create copy actions', () => {
@@ -80,4 +83,41 @@ test('logged in layout includes extended Joplin theme options', () => {
 	assert.ok(html.includes('<option value="nord">Nord</option>'));
 	assert.ok(html.includes('<option value="dracula">Dracula</option>'));
 	assert.ok(html.includes('<option value="aritim-dark">Aritim Dark</option>'));
+});
+
+test('logged in layout uses ordered list command and block transforms in preview toolbar', () => {
+	const html = layoutPage({ user: { email: 'user@example.com', fullName: 'User' }, navContent: '' });
+	assert.ok(html.includes('function transformPVBlock(tagName,defaultText)'));
+	assert.ok(html.includes('document.execCommand(\'insertOrderedList\',false,null)'));
+	assert.ok(html.includes('if(p===\'> \'&&transformPVBlock(\'blockquote\',\'Quote\'))return'));
+	assert.ok(html.includes('var fenced=String.fromCharCode(10)+String.fromCharCode(96,96,96)+String.fromCharCode(10)'));
+	assert.ok(html.includes('if(a===fenced&&b===fenced&&transformPVBlock(\'pre\',\'code\'))return'));
+	assert.ok(html.includes('var inlineCode=String.fromCharCode(96)'));
+	assert.ok(html.includes('if(a===inlineCode&&b===inlineCode){document.execCommand(\'insertHTML\',false,\'<code>\'+(window.getSelection().toString()||\'code\')+\'</code>\')'));
+});
+
+test('logged in layout emits inline script that parses', () => {
+	const html = layoutPage({ user: { email: 'user@example.com', fullName: 'User' }, navContent: '<div></div>' });
+	const match = html.match(/<script>([\s\S]*)<\/script>\s*<\/body>/);
+	assert.ok(match);
+	assert.doesNotThrow(() => new vm.Script(match[1]));
+});
+
+test('styles define ordered list spacing and white matrix note text', () => {
+	const css = fs.readFileSync(path.join(__dirname, '../public/styles.css'), 'utf8');
+	assert.ok(css.includes('--text: #ffffff;'));
+	assert.ok(css.includes('.editor-preview ul, .editor-preview ol { padding-left: 1.5em; margin: 0.5em 0; }'));
+	assert.ok(css.includes('--font-size-note: 15px;'));
+	assert.ok(css.includes('--font-size-code: 12px;'));
+	assert.ok(css.includes('font-size: var(--font-size-note);'));
+	assert.ok(css.includes('font-size: var(--font-size-code);'));
+});
+
+test('styles color folders differently from notes', () => {
+	const css = fs.readFileSync(path.join(__dirname, '../public/styles.css'), 'utf8');
+	assert.ok(css.includes('.nav-folder-title {'));
+	assert.ok(css.includes('.sidebar-item-name {'));
+	assert.ok(css.includes('.notelist-item-title {'));
+	assert.ok(css.includes('color: var(--accent);'));
+	assert.ok(css.includes('color: var(--text);'));
 });
