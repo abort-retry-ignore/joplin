@@ -34,6 +34,13 @@ const appleSplashLinks = [
 ].map(([fileName, media]) => `<link rel="apple-touch-startup-image" href="/apple-splash/${fileName}" media="${media}" />`).join('\n\t');
 
 const folderOutlineIcon = '<svg viewBox="0 0 24 24" class="folder-outline-icon" aria-hidden="true"><path d="M3.75 6.75h5.25l1.5 2h9.75v8.5A1.75 1.75 0 0 1 18.5 19H5.5a1.75 1.75 0 0 1-1.75-1.75v-8.75A1.75 1.75 0 0 1 5.5 6.75Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M3.75 8.75h16.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>';
+const allNotesIcon = '&#128196;';
+const trashFolderId = 'de1e7ede1e7ede1e7ede1e7ede1e7ede';
+
+const noteDomId = (noteId, contextFolderId = '') => {
+	const safeContext = `${contextFolderId || 'root'}`.replace(/[^a-zA-Z0-9_-]/g, '-');
+	return `note-item-${safeContext}-${noteId}`;
+};
 
 // Column 1: folder list item
 const folderListItem = (folder, selectedFolderId) => {
@@ -58,10 +65,11 @@ const folderListFragment = (folders, selectedFolderId) => {
 };
 
 // Column 2: single note in the note list
-const noteListItem = (note, selectedNoteId) => {
+const noteListItem = (note, selectedNoteId, contextFolderId = '') => {
 	const active = note.id === selectedNoteId ? ' active' : '';
-	return `<button id="note-item-${escapeHtml(note.id)}" class="notelist-item${active}" data-note-id="${escapeHtml(note.id)}"
-		hx-get="/fragments/editor/${encodeURIComponent(note.id)}"
+	const editorPath = `/fragments/editor/${encodeURIComponent(note.id)}${contextFolderId ? `?currentFolderId=${encodeURIComponent(contextFolderId)}` : ''}`;
+	return `<button id="${escapeHtml(noteDomId(note.id, contextFolderId))}" class="notelist-item${active}" data-note-id="${escapeHtml(note.id)}"
+		hx-get="${editorPath}"
 		hx-target="#editor-panel"
 		hx-swap="innerHTML"
 		hx-on::after-request="document.querySelectorAll('.notelist-item').forEach(b=>b.classList.remove('active'));this.classList.add('active');if(window.innerWidth<=768)closeNav()">
@@ -89,7 +97,7 @@ const noteListFragment = (notes, selectedNoteId, folderId) => {
 	</div>`;
 
 	const items = notes.length
-		? notes.map(n => noteListItem(n, selectedNoteId)).join('')
+		? notes.map(n => noteListItem(n, selectedNoteId, folderId)).join('')
 		: '<div class="empty-hint">No notes</div>';
 
 	return `${header}<div class="notelist-items" id="notelist-items">${items}</div>`;
@@ -111,16 +119,17 @@ const navigationFragment = (folders, notes, selectedFolderId, selectedNoteId, qu
 	const hasQuery = !!`${query || ''}`.trim();
 
 	const folderSections = (folders || []).map(folder => {
-		const folderNotes = notesByFolder.get(folder.id) || [];
+		const folderNotes = folder.isVirtualAllNotes ? (notes || []).filter(note => !note.deletedTime && note.parentId !== trashFolderId) : (notesByFolder.get(folder.id) || []);
 		if (hasQuery && !folderNotes.length) return '';
 		const isOpen = folder.id === selectedFolderId || folderNotes.some(n => n.id === selectedNoteId);
 		const count = folderNotes.length;
 		const isExpandable = !!count;
-		const isTrash = folder.id === 'de1e7ede1e7ede1e7ede1e7ede1e7ede';
+		const isTrash = folder.id === trashFolderId;
+		const isAllNotes = !!folder.isVirtualAllNotes;
 		return `<div class="nav-folder collapsed${isExpandable ? '' : ' nav-folder-empty'}" data-folder-id="${escapeHtml(folder.id)}" data-folder-title="${escapeHtml(folder.title || 'Untitled')}" data-selected="${isOpen ? '1' : ''}">
-			<div class="nav-folder-row"${isExpandable ? ` onclick="toggleNavFolder('${escapeHtml(folder.id)}')"` : ''} oncontextmenu="openFolderContextMenu(event,'${escapeHtml(folder.id)}','${escapeHtml(folder.title || 'Untitled')}')">
+			<div class="nav-folder-row"${isExpandable ? ` onclick="toggleNavFolder('${escapeHtml(folder.id)}')"` : ''}${isAllNotes ? '' : ` oncontextmenu="openFolderContextMenu(event,'${escapeHtml(folder.id)}','${escapeHtml(folder.title || 'Untitled')}')"`}>
 				${isExpandable ? '<button type="button" class="nav-folder-toggle" tabindex="-1">&#9656;</button>' : '<span class="nav-folder-toggle nav-folder-toggle-placeholder"></span>'}
-				<span class="sidebar-item-icon">${isTrash ? '&#128465;' : folderOutlineIcon}</span>
+				<span class="sidebar-item-icon">${isTrash ? '&#128465;' : (isAllNotes ? allNotesIcon : folderOutlineIcon)}</span>
 				<span class="nav-folder-title">${escapeHtml(folder.title || 'Untitled')}</span>
 				<span class="sidebar-item-count">${count || ''}</span>
 				${isTrash ? `<button type="button" class="btn-icon-sm nav-folder-add" title="Empty trash"
@@ -128,15 +137,15 @@ const navigationFragment = (folders, notes, selectedFolderId, selectedNoteId, qu
 					hx-target="#nav-panel"
 					hx-swap="innerHTML"
 					hx-confirm="Empty trash permanently?"
-					hx-on:click="event.stopPropagation()">&#10005;</button>` : `<button type="button" class="btn-icon-sm nav-folder-add" title="New note"
+					hx-on:click="event.stopPropagation()">&#10005;</button>` : (isAllNotes ? '' : `<button type="button" class="btn-icon-sm nav-folder-add" title="New note"
 					hx-post="/fragments/notes"
 					hx-vals='${escapeHtml(JSON.stringify({ parentId: folder.id }))}'
 					hx-target="#nav-panel"
 					hx-swap="innerHTML"
-					hx-on:click="event.stopPropagation()">+</button>`}
+					hx-on:click="event.stopPropagation()">+</button>`)}
 			</div>
 			<div class="nav-folder-notes">
-				${folderNotes.length ? folderNotes.map(n => noteListItem(n, selectedNoteId)).join('') : '<div class="empty-hint nav-empty">No notes</div>'}
+				${folderNotes.length ? folderNotes.map(n => noteListItem(n, selectedNoteId, folder.id)).join('') : '<div class="empty-hint nav-empty">No notes</div>'}
 			</div>
 		</div>`;
 	}).join('');
@@ -249,7 +258,7 @@ const settingsPage = (options = {}) => {
 };
 
 // Column 3: editor
-const editorFragment = (note, folders) => {
+const editorFragment = (note, folders, currentFolderId = '') => {
 	if (!note) {
 		return '<div class="editor-empty">Select a note</div>';
 	}
@@ -267,6 +276,7 @@ const editorFragment = (note, folders) => {
 			<select name="parentId" class="editor-folder-select" title="Move to folder">${folderOptions}</select>
 			<span class="editor-folder-arrow">&#9656;</span>
 			${noteSyncStateFragment(note)}
+			<input type="hidden" name="currentFolderId" value="${escapeHtml(currentFolderId || '')}" />
 			<input type="hidden" name="title" class="editor-title-hidden"
 				value="${escapeHtml(note.title || '')}" />
 			<div class="editor-title" contenteditable="true"
@@ -278,7 +288,7 @@ const editorFragment = (note, folders) => {
 				hx-target="#nav-panel"
 				hx-swap="innerHTML">Restore</button>` : ''}
 			<button type="button" class="btn btn-icon" title="Markdown" id="markdown-toggle" onclick="setEditorMode('markdown')" style="width:auto;padding:0 6px;font-size:11px">md</button>
-			<button type="button" class="btn btn-icon" title="Rendered preview" id="preview-toggle" onclick="setEditorMode('preview')">&#128065;</button>
+			<button type="button" class="btn btn-icon" title="Rendered Markdown" id="preview-toggle" onclick="setEditorMode('preview')">&#128065;</button>
 			<button type="button" class="btn btn-icon btn-danger" title="Delete"
 				hx-delete="/fragments/notes/${encodeURIComponent(note.id)}"
 				hx-target="#nav-panel"
@@ -385,7 +395,7 @@ const renderMarkdown = (markdown) => {
 	// Regular images: ![alt](url)
 	html = html.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<img src="$2" alt="$1" class="preview-img" />');
 	// Joplin resource links: [text](:/resourceId)
-	html = html.replace(/\[([^\]]*)\]\(:\/([0-9a-zA-Z]{32})\)/g, '<a href="/resources/$2">$1</a>');
+	html = html.replace(/\[([^\]]*)\]\(:\/([0-9a-zA-Z]{32})\)/g, '<a href="/resources/$2" target="_blank" rel="noopener">$1</a>');
 	// Regular links: [text](url)
 	html = html.replace(/\[([^\]]*)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
 
@@ -430,7 +440,7 @@ const renderMarkdown = (markdown) => {
 
 const searchResultsFragment = (notes) => {
 	if (!notes.length) return '<div class="empty-hint">No results</div>';
-	return notes.map(n => noteListItem(n, '')).join('');
+	return notes.map(n => noteListItem(n, '', 'search')).join('');
 };
 
 // Full page
@@ -592,7 +602,7 @@ const layoutPage = (options = {}) => {
 	function insertStamp(kind){insertTxt(formatStamp(kind))}
 	function insertLink(){var pv=getPV();if(pv){var u=prompt('URL:');if(!u)return;var sel=window.getSelection();var txt=sel.toString()||'link';document.execCommand('insertHTML',false,'<a href="'+u+'">'+txt+'</a>');syncPV();pv.focus();return}var u=prompt('URL:');if(u)wrapSel('[',']('+u+')')}
 	function insertImg(){var pv=getPV();if(pv){var u=prompt('Image URL:');if(!u)return;document.execCommand('insertHTML',false,'<img src="'+u+'" alt="image" class="preview-img" />');syncPV();pv.focus();return}var u=prompt('Image URL:');if(u)insertTxt('![image]('+u+')')}
-	function uploadFile(f){if(!f)return;var fd=new FormData();fd.append('file',f);var s=document.getElementById('autosave-status');if(s)s.innerHTML='<span class="autosave-saving">Uploading...</span>';fetch('/fragments/upload',{method:'POST',body:fd}).then(function(r){return r.json()}).then(function(d){if(d.error){alert(d.error);return}var pv=getPV();if(pv&&d.resourceId&&f.type.startsWith('image/')){document.execCommand('insertHTML',false,'<img src="/resources/'+d.resourceId+'" alt="'+f.name+'" class="preview-img" />');syncPV()}else{insertTxt(d.markdown)}}).catch(function(e){alert('Upload failed: '+e.message)}).finally(function(){if(s)s.innerHTML=''})}
+	function uploadFile(f){if(!f)return;var fd=new FormData();fd.append('file',f);var s=document.getElementById('autosave-status');if(s)s.innerHTML='<span class="autosave-saving">Uploading...</span>';fetch('/fragments/upload',{method:'POST',body:fd}).then(function(r){return r.json()}).then(function(d){if(d.error){alert(d.error);return}var pv=getPV();if(pv&&d.resourceId){if(f.type.startsWith('image/')){document.execCommand('insertHTML',false,'<img src="/resources/'+d.resourceId+'" alt="'+f.name+'" class="preview-img" />')}else{document.execCommand('insertHTML',false,'<a href="/resources/'+d.resourceId+'" target="_blank" rel="noopener">'+f.name.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')+'</a>')}syncPV();pv.focus();return}insertTxt(d.markdown)}).catch(function(e){alert('Upload failed: '+e.message)}).finally(function(){if(s)s.innerHTML=''})}
 	function handleDrop(e){e.preventDefault();var files=e.dataTransfer&&e.dataTransfer.files;if(!files||!files.length)return;for(var i=0;i<files.length;i++)uploadFile(files[i])}
 	var _tdService=null;
 	function getTurndown(){
@@ -606,8 +616,8 @@ const layoutPage = (options = {}) => {
 			if(w||h){var iSrc=rm?':/'+rm[1]:src;return '<img src="'+iSrc+'" alt="'+alt+'"'+(w?' width="'+parseInt(w)+'"':'')+(h?' height="'+parseInt(h)+'"':'')+' />'}
 			if(rm)return '!['+alt+'](:/'+ rm[1]+')';return '!['+alt+']('+src+')'}});
 		// Joplin resource links
-		td.addRule('joplinLink',{filter:function(n){return n.nodeName==='A'&&/^\\/resources\\/[0-9a-zA-Z]{32}$/.test(n.getAttribute('href')||'')},
-			replacement:function(c,n){var m=n.getAttribute('href').match(/^\\/resources\\/([0-9a-zA-Z]{32})$/);return '['+c+'](:/'+ m[1]+')'}});
+		td.addRule('joplinLink',{filter:function(n){return n.nodeName==='A'&&/^\\/resources\\/[0-9a-zA-Z]{32}(?:\\?download=1)?$/.test((n.getAttribute('href')||'').split('#')[0])},
+			replacement:function(c,n){var m=(n.getAttribute('href')||'').match(/^\\/resources\\/([0-9a-zA-Z]{32})/);return '['+c+'](:/'+ m[1]+')'}});
 		// md-blank-line divs — emit <br> so Joplin preserves the blank line
 		td.addRule('blankLine',{filter:function(n){return n.nodeName==='DIV'&&n.classList.contains('md-blank-line')},replacement:function(){return '\\n<br>\\n'}});
 		// md-checkbox divs
@@ -645,6 +655,7 @@ const layoutPage = (options = {}) => {
 	document.addEventListener('keydown',function(e){if(e.key==='Escape'){closeFolderContextMenu();closeFolderModal()}if(!getTA()&&!getPV())return;if((e.ctrlKey||e.metaKey)&&e.key==='b'){e.preventDefault();wrapSel('**','**')}if((e.ctrlKey||e.metaKey)&&e.key==='i'){e.preventDefault();wrapSel('*','*')}});
 	document.addEventListener('click',function(e){var menu=document.getElementById('folder-context-menu');if(menu&&!menu.hidden&&!menu.contains(e.target))closeFolderContextMenu()});
 	function activatePV(pv){if(!pv)return;pv.contentEditable='true';initImgResize(pv);pv.oninput=function(){_previewDirty=true;scheduleSyncPV()};pv.onkeyup=null;if(pv.dataset.pvInit)return;pv.dataset.pvInit='1';
+		pv.addEventListener('click',function(e){var link=e.target.closest('a');if(link&&pv.contains(link)){var href=link.getAttribute('href')||'';if(href){e.preventDefault();window.open(href,'_blank','noopener');return}}});
 		// Click checkbox icon to toggle checked state
 		pv.addEventListener('click',function(e){var cb=e.target.closest('.md-checkbox');if(!cb)return;var txt=cb.firstChild;if(!txt||txt.nodeType!==3)return;var icon=txt.textContent.charAt(0);if(icon!=='\u2610'&&icon!=='\u2611')return;var r=document.createRange();r.setStart(txt,0);r.setEnd(txt,Math.min(2,txt.textContent.length));var iconRect=r.getBoundingClientRect();if(e.clientX>iconRect.right)return;e.preventDefault();var checked=!cb.classList.contains('checked');cb.classList.toggle('checked',checked);txt.textContent=(checked?'\u2611':'\u2610')+txt.textContent.slice(1);syncPV()});
 		// Enter inside code blocks should stay in the same block; Enter after checkbox creates new checkbox

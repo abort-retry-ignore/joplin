@@ -37,6 +37,7 @@ test('editorFragment includes date and datetime toolbar buttons', () => {
 	assert.ok(html.includes('id="preview-toggle"'));
 	assert.ok(html.includes('onclick="setEditorMode(\'markdown\')"'));
 	assert.ok(html.includes('onclick="setEditorMode(\'preview\')"'));
+	assert.ok(html.includes('title="Rendered Markdown"'));
 });
 
 test('navigationFragment shows trash folder empty action', () => {
@@ -44,6 +45,20 @@ test('navigationFragment shows trash folder empty action', () => {
 	assert.ok(html.includes('hx-post="/fragments/trash/empty"'));
 	assert.ok(html.includes('Empty trash permanently?'));
 	assert.ok(html.includes('&#128465;'));
+});
+
+test('navigationFragment shows virtual all notes without notebook actions', () => {
+	const html = navigationFragment([
+		{ id: '__all_notes__', title: 'All Notes', parentId: '', isVirtualAllNotes: true },
+		{ id: 'f1', title: 'Folder 1', parentId: '' },
+	], [
+		{ id: 'n1', title: 'Note 1', parentId: 'f1', deletedTime: 0 },
+	], '__all_notes__', 'n1');
+	assert.ok(html.includes('All Notes'));
+	assert.ok(html.includes('note-item-__all_notes__-n1'));
+	assert.ok(html.includes('hx-get="/fragments/editor/n1?currentFolderId=__all_notes__"'));
+	assert.ok(!html.includes('openFolderContextMenu(event,\'__all_notes__\''));
+	assert.ok(!html.includes('hx-vals=\'{&quot;parentId&quot;:&quot;__all_notes__&quot;}\''));
 });
 
 test('navigationFragment hides empty folders while search query is active', () => {
@@ -81,6 +96,13 @@ test('renderMarkdown rewrites raw html resource images without self-closing slas
 	assert.ok(html.includes('src="/resources/49a3f012f300473d98a33b97940306b1"'));
 	assert.ok(html.includes('width="313"'));
 	assert.ok(html.includes('height="417"'));
+});
+
+test('renderMarkdown opens resource links in another tab', () => {
+	const html = renderMarkdown('[Manual](:/49a3f012f300473d98a33b97940306b1)');
+	assert.ok(html.includes('href="/resources/49a3f012f300473d98a33b97940306b1"'));
+	assert.ok(html.includes('target="_blank"'));
+	assert.ok(html.includes('rel="noopener"'));
 });
 
 test('logged out layout clears client storage and service worker state', () => {
@@ -188,6 +210,8 @@ test('logged in layout emits inline script that parses', () => {
 	assert.doesNotThrow(() => new vm.Script(match[1]));
 	assert.ok(match[1].includes('function openFolderContextMenu(event,id,title)'));
 	assert.ok(match[1].includes('function submitFolderEdit(event)'));
+	assert.ok(match[1].includes('window.open(href,\'_blank\',\'noopener\')'));
+	assert.ok(match[1].includes('document.execCommand(\'insertHTML\',false,\'<a href="/resources/'));
 });
 
 test('styles define ordered list spacing and matrix note text token', () => {

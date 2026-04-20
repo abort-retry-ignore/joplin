@@ -130,6 +130,29 @@ const nextConflictCopyTitle = (title, existingTitles) => {
 };
 
 const TRASH_FOLDER_ID = 'de1e7ede1e7ede1e7ede1e7ede1e7ede';
+const ALL_NOTES_FOLDER_ID = '__all_notes__';
+
+const allNotesFolder = notes => ({
+	id: ALL_NOTES_FOLDER_ID,
+	parentId: '',
+	title: 'All Notes',
+	noteCount: notes.filter(note => !note.deletedTime).length,
+	createdTime: 0,
+	updatedTime: 0,
+	isVirtualAllNotes: true,
+});
+
+const selectedFolderForNav = currentFolderId => currentFolderId === ALL_NOTES_FOLDER_ID ? ALL_NOTES_FOLDER_ID : currentFolderId;
+
+const notesForFolder = async (itemService, userId, folderId) => {
+	if (!folderId || folderId === ALL_NOTES_FOLDER_ID) return itemService.notesByUserId(userId);
+	if (folderId === TRASH_FOLDER_ID) return itemService.notesByUserId(userId, { deleted: 'only' });
+	return itemService.notesByUserId(userId, { folderId });
+};
+
+const contentDispositionFilename = value => `${value || 'attachment'}`.replace(/[\r\n"]/g, '_');
+
+const shouldInlineResource = mime => /^(image\/.+|application\/pdf|text\/plain)$/i.test(`${mime || ''}`);
 
 const trashFolder = notes => ({
 	id: TRASH_FOLDER_ID,
@@ -188,7 +211,7 @@ const createServer = options => {
 			itemService.noteHeadersByUserId(userId, { deleted: 'only' }),
 		]);
 		const allNotes = mapNavNotes(notes.concat(trashedNotes));
-		const allFolders = folders.concat([trashFolder(trashedNotes)]);
+		const allFolders = [allNotesFolder(notes)].concat(folders, [trashFolder(trashedNotes)]);
 		return { folders: allFolders, notes: allNotes };
 	};
 
@@ -369,6 +392,7 @@ const createServer = options => {
 
 				const body = await parseBody(request);
 				const parentId = `${body.parentId || ''}`;
+				const currentFolderId = `${body.currentFolderId || parentId || ''}`;
 				if (!parentId) { sendHtml(response, 400, '<div class="empty-hint">Select a folder first.</div>'); return; }
 
 				const created = await itemWriteService.createNote(auth.user.sessionId, {
@@ -381,7 +405,7 @@ const createServer = options => {
 					navData(auth.user.id),
 					itemService.noteByUserIdAndJopId(auth.user.id, created.id),
 				]);
-				sendHtml(response, 200, `${templates.navigationFragment(folders, notes, parentId, created.id)}<div id="editor-panel" hx-swap-oob="innerHTML">${templates.editorFragment(note, folders.filter(folder => folder.id !== TRASH_FOLDER_ID))}</div>`);
+				sendHtml(response, 200, `${templates.navigationFragment(folders, notes, selectedFolderForNav(currentFolderId), created.id)}<div id="editor-panel" hx-swap-oob="innerHTML">${templates.editorFragment(note, folders.filter(folder => folder.id !== TRASH_FOLDER_ID), selectedFolderForNav(currentFolderId))}</div>`);
 			} catch (error) {
 				sendHtml(response, error.statusCode || 500, `<div class="empty-hint">Error: ${templates.escapeHtml(error.message || `${error}`)}</div>`);
 			}
@@ -477,10 +501,14 @@ const createServer = options => {
 				if (!blob) { send(response, 404, 'Resource not found', { 'Content-Type': 'text/plain' }); return; }
 
 				const mime = (meta && meta.mime) || 'application/octet-stream';
+				const filename = contentDispositionFilename((meta && (meta.filename || meta.title)) || `${resourceId}`);
+				const download = url.searchParams.get('download') === '1';
+				const disposition = `${download || !shouldInlineResource(mime) ? 'attachment' : 'inline'}; filename="${filename}"`;
 				response.writeHead(200, {
 					'Content-Type': mime,
 					'Content-Length': blob.length,
 					'Cache-Control': 'no-store',
+					'Content-Disposition': disposition,
 				});
 				response.end(blob);
 			} catch (error) {
@@ -569,12 +597,13 @@ const createServer = options => {
 				if (auth.error) { sendHtml(response, 401, '<div class="editor-empty">Session expired.</div>'); return; }
 
 				const noteId = decodeURIComponent(url.pathname.slice('/fragments/editor/'.length));
+				const currentFolderId = url.searchParams.get('currentFolderId') || '';
 				const [note, folders] = await Promise.all([
 					itemService.noteByUserIdAndJopId(auth.user.id, noteId, { deleted: 'all' }),
 					itemService.foldersByUserId(auth.user.id),
 				]);
 				if (!note) { sendHtml(response, 404, '<div class="editor-empty">Note not found.</div>'); return; }
-				sendHtml(response, 200, templates.editorFragment(note, folders));
+				sendHtml(response, 200, templates.editorFragment(note, folders, currentFolderId || note.parentId));
 			} catch (error) {
 				sendHtml(response, 500, '<div class="editor-empty">Error</div>');
 			}
@@ -591,6 +620,7 @@ const createServer = options => {
 				if (!existing) existing = await itemService.noteByUserIdAndJopId(auth.user.id, noteId, { deleted: 'only' });
 
 				const body = await parseBody(request);
+				const currentFolderId = `${body.currentFolderId || body.parentId || existing.parentId || ''}`;
 				const baseUpdatedTime = Number(body.baseUpdatedTime || 0);
 				const forceSave = `${body.forceSave || ''}` === '1';
 				const createCopy = `${body.createCopy || ''}` === '1';
@@ -604,7 +634,7 @@ const createServer = options => {
 						navData(auth.user.id),
 						itemService.noteByUserIdAndJopId(auth.user.id, created.id),
 					]);
-					sendHtml(response, 200, `${templates.autosaveStatusFragment()}<div id="nav-panel" hx-swap-oob="innerHTML">${templates.navigationFragment(folders, notes, `${body.parentId || ''}`, created.id)}</div><div id="editor-panel" hx-swap-oob="innerHTML">${templates.editorFragment(createdNote, folders.filter(folder => folder.id !== TRASH_FOLDER_ID))}</div>`);
+					sendHtml(response, 200, `${templates.autosaveStatusFragment()}<div id="nav-panel" hx-swap-oob="innerHTML">${templates.navigationFragment(folders, notes, selectedFolderForNav(currentFolderId), created.id)}</div><div id="editor-panel" hx-swap-oob="innerHTML">${templates.editorFragment(createdNote, folders.filter(folder => folder.id !== TRASH_FOLDER_ID), selectedFolderForNav(currentFolderId))}</div>`);
 					return;
 				}
 				if (createCopy) {
@@ -618,7 +648,7 @@ const createServer = options => {
 						parentId: body.parentId || existing.parentId,
 					}, upstreamRequestContext(request));
 					const createdNote = await itemService.noteByUserIdAndJopId(auth.user.id, created.id);
-					sendHtml(response, 200, `${templates.autosaveStatusFragment()}<div id="nav-panel" hx-swap-oob="innerHTML">${templates.navigationFragment(folders, notes.concat([{ id: created.id, title: copyTitle, parentId: body.parentId || existing.parentId, updatedTime: createdNote ? createdNote.updatedTime : 0, deletedTime: 0 }]), body.parentId || existing.parentId, created.id)}</div><div id="editor-panel" hx-swap-oob="innerHTML">${templates.editorFragment(createdNote, folders.filter(folder => folder.id !== TRASH_FOLDER_ID))}</div>`);
+					sendHtml(response, 200, `${templates.autosaveStatusFragment()}<div id="nav-panel" hx-swap-oob="innerHTML">${templates.navigationFragment(folders, notes.concat([{ id: created.id, title: copyTitle, parentId: body.parentId || existing.parentId, updatedTime: createdNote ? createdNote.updatedTime : 0, deletedTime: 0 }]), selectedFolderForNav(currentFolderId), created.id)}</div><div id="editor-panel" hx-swap-oob="innerHTML">${templates.editorFragment(createdNote, folders.filter(folder => folder.id !== TRASH_FOLDER_ID), selectedFolderForNav(currentFolderId))}</div>`);
 					return;
 				}
 				if (!forceSave && baseUpdatedTime && Number(existing.updatedTime || 0) !== baseUpdatedTime) {
@@ -632,16 +662,8 @@ const createServer = options => {
 				}, upstreamRequestContext(request));
 				const refreshed = await itemService.noteByUserIdAndJopId(auth.user.id, noteId);
 
-				// Build OOB swap to update the note list item sidebar
-				const updatedNote = {
-					...(refreshed || existing),
-					title: body.title !== undefined ? body.title : (refreshed ? refreshed.title : existing.title),
-					bodyPreview: body.body !== undefined ? `${body.body}`.slice(0, 100) : (refreshed ? refreshed.bodyPreview : existing.bodyPreview),
-				};
-				const oobItem = templates.noteListItem(updatedNote, noteId)
-					.replace(/^<button /, '<button hx-swap-oob="true" ');
-
-				sendHtml(response, 200, templates.autosaveStatusFragment() + oobItem + templates.noteSyncStateFragment(refreshed || existing).replace('<span id="editor-sync-state">', '<span id="editor-sync-state" hx-swap-oob="outerHTML">') + templates.noteMetaFragment(refreshed || existing).replace('<span id="note-meta"', '<span id="note-meta" hx-swap-oob="outerHTML"'));
+				const { folders, notes } = await navData(auth.user.id);
+				sendHtml(response, 200, `${templates.autosaveStatusFragment()}<div id="nav-panel" hx-swap-oob="innerHTML">${templates.navigationFragment(folders, notes, selectedFolderForNav(currentFolderId), noteId)}</div>${templates.noteSyncStateFragment(refreshed || existing).replace('<span id="editor-sync-state">', '<span id="editor-sync-state" hx-swap-oob="outerHTML">')}${templates.noteMetaFragment(refreshed || existing).replace('<span id="note-meta"', '<span id="note-meta" hx-swap-oob="outerHTML"')}`);
 			} catch (error) {
 				sendHtml(response, error.statusCode || 500, '<span class="autosave-error">Save failed</span>');
 			}
@@ -764,7 +786,7 @@ const createServer = options => {
 				const auth = await authenticatedUser(request);
 				if (auth.error) { sendJson(response, 401, { error: auth.error }); return; }
 				const folderId = url.searchParams.get('folderId') || '';
-				const notes = await itemService.notesByUserId(auth.user.id, { folderId });
+				const notes = await notesForFolder(itemService, auth.user.id, folderId);
 				sendJson(response, 200, { items: notes });
 			} catch (error) {
 				sendJson(response, 500, { error: error.message || `${error}` });

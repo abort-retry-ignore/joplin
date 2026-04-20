@@ -218,13 +218,27 @@ test('GET /fragments/nav returns HTML folder-note tree', async () => {
 		const res = await request(port, { path: '/fragments/nav?q=Note' });
 		assert.equal(res.statusCode, 200);
 		assert.ok(res.headers['content-type'].includes('text/html'));
+		assert.ok(res.body.includes('All Notes'));
 		assert.ok(res.body.includes('Folder 1'));
 		assert.ok(res.body.includes('Note 1'));
 		assert.ok(res.body.includes('id="nav-search"'));
 		assert.ok(res.body.includes('class="nav-search-form"'));
 		assert.ok(res.body.includes('&#128269;'));
 		assert.ok(res.body.includes('value="Note"'));
-		assert.ok(res.body.includes('hx-get="/fragments/editor/n1"'));
+		assert.ok(res.body.includes('hx-get="/fragments/editor/n1?currentFolderId=__all_notes__"'));
+	});
+});
+
+test('GET /fragments/editor/:id preserves current folder context', async () => {
+	await withServer({
+		itemService: {
+			noteByUserIdAndJopId: async () => ({ id: 'n1', title: 'Test Note', body: 'Hello world', parentId: 'f1', createdTime: 1000, updatedTime: 2000 }),
+			foldersByUserId: async () => [{ id: 'f1', title: 'Folder 1', parentId: '' }],
+		},
+	}, async port => {
+		const res = await request(port, { path: '/fragments/editor/n1?currentFolderId=__all_notes__' });
+		assert.equal(res.statusCode, 200);
+		assert.ok(res.body.includes('name="currentFolderId" value="__all_notes__"'));
 	});
 });
 
@@ -263,9 +277,8 @@ test('PUT /fragments/editor/:id autosaves and returns status', async () => {
 		});
 		assert.equal(res.statusCode, 200);
 		assert.ok(res.body.includes('Saved'));
-		assert.ok(res.body.includes('hx-swap-oob="true"'), 'should include OOB swap');
-		assert.ok(res.body.includes('id="note-item-n1"'), 'should target note list item');
-		assert.ok(res.body.includes('Updated Title'), 'OOB item should have updated title');
+		assert.ok(res.body.includes('id="nav-panel" hx-swap-oob="innerHTML"'), 'should refresh nav panel');
+		assert.ok(res.body.includes('id="editor-sync-state" hx-swap-oob="outerHTML"'));
 		assert.ok(res.body.includes('name="baseUpdatedTime" value="2000"'));
 		assert.equal(savedUpdates.title, 'Updated Title');
 		assert.equal(savedUpdates.body, 'Updated body');
@@ -319,7 +332,7 @@ test('PUT /fragments/editor/:id can create copy on conflict', async () => {
 		assert.equal(createdArgs.title, 'Updated Title-3');
 		assert.equal(createdArgs.body, 'Updated body');
 		assert.ok(res.body.includes('id="nav-panel" hx-swap-oob="innerHTML"'));
-		assert.ok(res.body.includes('id="note-item-n-copy"'));
+		assert.ok(res.body.includes('id="note-item-f1-n-copy"'));
 		assert.ok(res.body.includes('class="notelist-item active"'));
 		assert.ok(res.body.includes('hx-put="/fragments/editor/n-copy"'));
 	});
@@ -391,7 +404,7 @@ test('POST /fragments/notes selects created note and loads editor', async () => 
 			body: 'parentId=f1',
 		});
 		assert.equal(res.statusCode, 200);
-		assert.ok(res.body.includes('id="note-item-n-new"'));
+		assert.ok(res.body.includes('id="note-item-f1-n-new"'));
 		assert.ok(res.body.includes('class="notelist-item active"'));
 		assert.ok(res.body.includes('id="editor-panel" hx-swap-oob="innerHTML"'));
 		assert.ok(res.body.includes('hx-put="/fragments/editor/n-new"'));
@@ -617,7 +630,7 @@ test('GET /fragments/search returns matching notes', async () => {
 		const res = await request(port, { path: '/fragments/search?q=hello' });
 		assert.equal(res.statusCode, 200);
 		assert.ok(res.body.includes('Hello World'));
-		assert.ok(res.body.includes('hx-get="/fragments/editor/n1"'));
+		assert.ok(res.body.includes('hx-get="/fragments/editor/n1?currentFolderId=search"'));
 
 		const empty = await request(port, { path: '/fragments/search?q=' });
 		assert.equal(empty.statusCode, 200);
@@ -632,7 +645,7 @@ test('GET /resources/:id serves binary blob with correct content-type', async ()
 	await withServer({
 		itemService: {
 			resourceMetaByUserId: async (_uid, rid) => {
-				if (rid === 'abcdef01234567890abcdef012345678') return { id: rid, mime: 'image/png', title: 'test.png' };
+				if (rid === 'abcdef01234567890abcdef012345678') return { id: rid, mime: 'image/png', title: 'test.png', filename: 'test.png' };
 				return null;
 			},
 			resourceBlobByUserId: async (_uid, rid) => {
@@ -645,7 +658,42 @@ test('GET /resources/:id serves binary blob with correct content-type', async ()
 		assert.equal(res.statusCode, 200);
 		assert.equal(res.headers['cache-control'], 'no-store');
 		assert.equal(res.headers['content-type'], 'image/png');
+		assert.equal(res.headers['content-disposition'], 'inline; filename="test.png"');
 		assert.ok(res.rawBody.equals(blobData));
+	});
+});
+
+test('GET /resources/:id forces attachment download when requested', async () => {
+	const blobData = Buffer.from('%PDF-1.7');
+	await withServer({
+		itemService: {
+			resourceMetaByUserId: async (_uid, rid) => rid === 'abcdef01234567890abcdef012345678' ? { id: rid, mime: 'application/pdf', title: 'manual.pdf', filename: 'manual.pdf' } : null,
+			resourceBlobByUserId: async (_uid, rid) => rid === 'abcdef01234567890abcdef012345678' ? blobData : null,
+		},
+	}, async port => {
+		const res = await request(port, { path: '/resources/abcdef01234567890abcdef012345678?download=1' });
+		assert.equal(res.statusCode, 200);
+		assert.equal(res.headers['content-disposition'], 'attachment; filename="manual.pdf"');
+		assert.ok(res.rawBody.equals(blobData));
+	});
+});
+
+test('GET /api/web/notes returns all notes for virtual all notes folder', async () => {
+	let receivedOptions = null;
+	await withServer({
+		itemService: {
+			notesByUserId: async (_uid, options = {}) => {
+				receivedOptions = options;
+				return [{ id: 'n1', title: 'Note 1', parentId: 'f1' }];
+			},
+		},
+	}, async port => {
+		const res = await request(port, { path: '/api/web/notes?folderId=__all_notes__' });
+		assert.equal(res.statusCode, 200);
+		assert.deepEqual(receivedOptions, {});
+		const payload = JSON.parse(res.body);
+		assert.equal(payload.items.length, 1);
+		assert.equal(payload.items[0].id, 'n1');
 	});
 });
 
