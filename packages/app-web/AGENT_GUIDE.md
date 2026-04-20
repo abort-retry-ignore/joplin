@@ -64,6 +64,8 @@ Theme picker includes Matrix, Dark, Light, OLED Dark, Solarized Light, Solarized
 - Preview note/body font size and preview code font size are separate CSS tokens: `--font-size-note` and `--font-size-code`
 - Folder names use theme accent color; note titles use normal text color
 - Notebook rows use one shared context menu and one shared rename modal; avoid per-folder menu/modal instances
+- `/settings` is the home for Joplock-specific UI settings; note/code font sizes, note monospace toggle, and date/datetime formats are stored in the sidecar-owned `joplock_user_settings` table
+- Joplock MFA is deployment-wide and env-driven via `JOPLOCK_TOTP_SEED`; if configured, login requires a TOTP code and settings should show the QR/seed
 
 ## Core Rules
 
@@ -141,6 +143,8 @@ Owns:
 ### Deployment
 - `docker-compose.app-web.yml`
 - `.env.app-web` — `APP_WEB_PORT=5444`, `JOPLOCK_PUBLIC_BASE_URL=https://joplock.021407.xyz`, `JOPLIN_SERVER_PUBLIC_URL=https://joplin.021407.xyz`
+- optional env MFA settings: `JOPLOCK_TOTP_SEED`, `JOPLOCK_TOTP_ISSUER`
+- sidecar-owned settings table: `joplock_user_settings` in the same Postgres DB as Joplin Server, keyed by `users.id`
 - `.env.app-web-sample`
 - `Dockerfile`
 - Build+deploy: `docker compose -f docker-compose.app-web.yml --env-file .env.app-web up -d --build app-web`

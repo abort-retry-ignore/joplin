@@ -33,6 +33,8 @@ const appleSplashLinks = [
 	['2732x2048.png', 'screen and (device-width: 1024px) and (device-height: 1366px) and (-webkit-device-pixel-ratio: 2) and (orientation: landscape)'],
 ].map(([fileName, media]) => `<link rel="apple-touch-startup-image" href="/apple-splash/${fileName}" media="${media}" />`).join('\n\t');
 
+const folderOutlineIcon = '<svg viewBox="0 0 24 24" class="folder-outline-icon" aria-hidden="true"><path d="M3.75 6.75h5.25l1.5 2h9.75v8.5A1.75 1.75 0 0 1 18.5 19H5.5a1.75 1.75 0 0 1-1.75-1.75v-8.75A1.75 1.75 0 0 1 5.5 6.75Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M3.75 8.75h16.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>';
+
 // Column 1: folder list item
 const folderListItem = (folder, selectedFolderId) => {
 	const active = folder.id === selectedFolderId ? ' active' : '';
@@ -41,7 +43,7 @@ const folderListItem = (folder, selectedFolderId) => {
 		hx-target="#notelist-panel"
 		hx-swap="innerHTML"
 		hx-on::after-request="document.querySelectorAll('.sidebar-item').forEach(b=>b.classList.remove('active'));this.classList.add('active')">
-		<span class="sidebar-item-icon">&#128193;</span>
+		<span class="sidebar-item-icon">${folderOutlineIcon}</span>
 		<span class="sidebar-item-name">${escapeHtml(folder.title || 'Untitled')}</span>
 		<span class="sidebar-item-count">${folder.noteCount !== undefined ? folder.noteCount : ''}</span>
 	</button>`;
@@ -118,7 +120,7 @@ const navigationFragment = (folders, notes, selectedFolderId, selectedNoteId, qu
 		return `<div class="nav-folder collapsed${isExpandable ? '' : ' nav-folder-empty'}" data-folder-id="${escapeHtml(folder.id)}" data-folder-title="${escapeHtml(folder.title || 'Untitled')}" data-selected="${isOpen ? '1' : ''}">
 			<div class="nav-folder-row"${isExpandable ? ` onclick="toggleNavFolder('${escapeHtml(folder.id)}')"` : ''} oncontextmenu="openFolderContextMenu(event,'${escapeHtml(folder.id)}','${escapeHtml(folder.title || 'Untitled')}')">
 				${isExpandable ? '<button type="button" class="nav-folder-toggle" tabindex="-1">&#9656;</button>' : '<span class="nav-folder-toggle nav-folder-toggle-placeholder"></span>'}
-				<span class="sidebar-item-icon">${isTrash ? '&#128465;' : '&#128193;'}</span>
+				<span class="sidebar-item-icon">${isTrash ? '&#128465;' : folderOutlineIcon}</span>
 				<span class="nav-folder-title">${escapeHtml(folder.title || 'Untitled')}</span>
 				<span class="sidebar-item-count">${count || ''}</span>
 				${isTrash ? `<button type="button" class="btn-icon-sm nav-folder-add" title="Empty trash"
@@ -165,6 +167,87 @@ const navigationFragment = (folders, notes, selectedFolderId, selectedNoteId, qu
 	</div>`;
 };
 
+const settingsPage = (options = {}) => {
+	const { user, settings = {}, mfaEnabled, mfaQrDataUrl, mfaSeed } = options;
+	return `<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="utf-8" />
+	<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+	<meta name="theme-color" content="#08110b" />
+	<link rel="manifest" href="/manifest.webmanifest" />
+	<link rel="icon" href="/icon.svg" type="image/svg+xml" />
+	<link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+	${appleSplashLinks}
+	<link rel="stylesheet" href="/styles.css" />
+	<title>Joplock Settings</title>
+</head>
+<body class="theme-matrix">
+	<div class="settings-page">
+		<div class="settings-card">
+			<div class="settings-header">
+				<div>
+					<h1 class="settings-title">Joplock Settings</h1>
+					<p class="settings-sub">Adjust local reading preferences and Joplock security.</p>
+				</div>
+				<a href="/" class="btn btn-sm btn-secondary">Back to notes</a>
+			</div>
+			<section class="settings-section">
+				<h2 class="settings-section-title">Appearance</h2>
+				<p class="settings-section-sub">These font settings apply only in this browser.</p>
+				<form class="settings-form" method="POST" action="/settings">
+				<div class="settings-grid">
+					<label class="settings-field">
+						<span>Note font size</span>
+						<input type="range" min="12" max="24" value="${escapeHtml(settings.noteFontSize || 15)}" id="settings-note-font" name="noteFontSize" />
+						<output id="settings-note-font-value">${escapeHtml(settings.noteFontSize || 15)}px</output>
+					</label>
+					<label class="settings-field">
+						<span>Code font size</span>
+						<input type="range" min="10" max="22" value="${escapeHtml(settings.codeFontSize || 12)}" id="settings-code-font" name="codeFontSize" />
+						<output id="settings-code-font-value">${escapeHtml(settings.codeFontSize || 12)}px</output>
+					</label>
+					<label class="settings-field settings-checkbox">
+						<span>Note body font</span>
+						<label><input type="checkbox" id="settings-note-monospace" name="noteMonospace" value="1"${settings.noteMonospace ? ' checked' : ''} /> Use monospace for note text</label>
+					</label>
+					<label class="settings-field">
+						<span>Date format</span>
+						<input type="text" class="login-input" id="settings-date-format" name="dateFormat" value="${escapeHtml(settings.dateFormat || 'MMM-DD-YY')}" />
+					</label>
+					<label class="settings-field">
+						<span>DateTime format</span>
+						<input type="text" class="login-input" id="settings-datetime-format" name="datetimeFormat" value="${escapeHtml(settings.datetimeFormat || 'YYYY-MM-DD HH:mm')}" />
+					</label>
+				</div>
+				<div class="settings-actions"><button type="submit" class="btn btn-primary">Save settings</button></div>
+				</form>
+			</section>
+			<section class="settings-section">
+				<h2 class="settings-section-title">Security</h2>
+				<p class="settings-section-sub">Joplock-specific two-factor authentication for <strong>${escapeHtml(user.email)}</strong>.</p>
+				${mfaEnabled ? `<div class="settings-security-card">
+					<p class="settings-mfa-status">Two-factor authentication is enabled for Joplock on this deployment.</p>
+					<img src="${mfaQrDataUrl}" alt="Joplock MFA QR code" class="settings-qr" />
+					<p class="settings-secret">TOTP seed: <code>${escapeHtml(mfaSeed)}</code></p>
+					<p class="settings-section-sub">Scan the QR code in your authenticator app. Login will require a 6-digit code while this seed is configured.</p>
+				</div>` : '<div class="settings-security-card"><p class="settings-mfa-status">Two-factor authentication is disabled. Set <code>JOPLOCK_TOTP_SEED</code> in the app-web environment to enable it.</p></div>'}
+			</section>
+		</div>
+	</div>
+	<script>
+	(function(){
+		function bindRange(inputId,valueId,cssVar){var input=document.getElementById(inputId);var value=document.getElementById(valueId);if(!input||!value)return;document.body.style.setProperty(cssVar,input.value+'px');value.textContent=input.value+'px';input.addEventListener('input',function(){document.body.style.setProperty(cssVar,this.value+'px');value.textContent=this.value+'px'})}
+		function bindMonospace(){var input=document.getElementById('settings-note-monospace');if(!input)return;document.body.classList.toggle('note-body-monospace',input.checked);input.addEventListener('change',function(){document.body.classList.toggle('note-body-monospace',this.checked)})}
+		bindRange('settings-note-font','settings-note-font-value','--font-size-note');
+		bindRange('settings-code-font','settings-code-font-value','--font-size-code');
+		bindMonospace();
+	})();
+	</script>
+</body>
+</html>`;
+};
+
 // Column 3: editor
 const editorFragment = (note, folders) => {
 	if (!note) {
@@ -194,8 +277,8 @@ const editorFragment = (note, folders) => {
 				hx-post="/fragments/notes/${encodeURIComponent(note.id)}/restore"
 				hx-target="#nav-panel"
 				hx-swap="innerHTML">Restore</button>` : ''}
-			<button type="button" class="btn btn-icon" title="Edit" id="preview-toggle" onclick="togglePreview()">&#9998;</button>
-			<button type="button" class="btn btn-icon" title="Toggle clean markdown (hide &lt;br&gt; tags)" id="clean-md-toggle" onclick="toggleCleanMd()" style="width:auto;padding:0 6px;font-size:11px;display:none">md</button>
+			<button type="button" class="btn btn-icon" title="Markdown" id="markdown-toggle" onclick="setEditorMode('markdown')" style="width:auto;padding:0 6px;font-size:11px">md</button>
+			<button type="button" class="btn btn-icon" title="Rendered preview" id="preview-toggle" onclick="setEditorMode('preview')">&#128065;</button>
 			<button type="button" class="btn btn-icon btn-danger" title="Delete"
 				hx-delete="/fragments/notes/${encodeURIComponent(note.id)}"
 				hx-target="#nav-panel"
@@ -352,7 +435,8 @@ const searchResultsFragment = (notes) => {
 
 // Full page
 const layoutPage = (options = {}) => {
-	const { user, navContent, loginError } = options;
+	const { user, navContent, loginError, mfaEnabled = false } = options;
+	const settings = options.settings || {};
 	const loggedIn = !!user;
 
 	if (!loggedIn) {
@@ -373,10 +457,10 @@ const layoutPage = (options = {}) => {
 	<link rel="stylesheet" href="/styles.css" />
 	<title>Joplock</title>
 </head>
-<body class="theme-matrix">
+<body class="theme-matrix${settings.noteMonospace ? ' note-body-monospace' : ''}" style="--font-size-note:${escapeHtml(settings.noteFontSize || 15)}px;--font-size-code:${escapeHtml(settings.codeFontSize || 12)}px;">
 	<script>
 	(function(){
-		var keys=['joplock-theme','joplock-nav-collapsed','joplock-nav-folders','joplock-clean-md'];
+		var keys=['joplock-theme','joplock-nav-collapsed','joplock-nav-folders'];
 		try{keys.forEach(function(k){localStorage.removeItem(k)})}catch(e){}
 		try{if('serviceWorker' in navigator){navigator.serviceWorker.getRegistrations().then(function(rs){return Promise.all(rs.map(function(r){return r.unregister()}))}).catch(function(){})}}catch(e){}
 		try{if('caches' in window){caches.keys().then(function(keys){return Promise.all(keys.map(function(k){return caches.delete(k)}))}).catch(function(){})}}catch(e){}
@@ -385,13 +469,14 @@ const layoutPage = (options = {}) => {
 	<div class="login-page">
 		<div class="login-card">
 			<h1 class="login-title">Joplock</h1>
-			<p class="login-sub">Web client for Joplin Server</p>
+			<p class="login-sub">Sign in with your Joplin Server credentials.</p>
 			<form class="login-form" method="POST" action="/login">
 				<input type="email" name="email" placeholder="Email" class="login-input" required autofocus />
 				<div class="login-password-wrap">
 					<input type="password" name="password" id="login-password" placeholder="Password" class="login-input" required />
 					<button type="button" class="login-eye" onclick="var p=document.getElementById('login-password');if(p.type==='password'){p.type='text';this.innerHTML='&#128065;'}else{p.type='password';this.innerHTML='&#128064;'}" title="Show/hide password">&#128064;</button>
 				</div>
+				${mfaEnabled ? '<input type="text" name="totp" inputmode="numeric" autocomplete="one-time-code" placeholder="Authentication code" class="login-input" />' : ''}
 				<div class="login-error" id="login-error">${loginError ? escapeHtml(loginError) : ''}</div>
 				<button type="submit" class="btn btn-primary login-btn">Login</button>
 			</form>
@@ -432,11 +517,14 @@ const layoutPage = (options = {}) => {
 		</div>
 	</div>
 	<div class="app-statusbar">
+		<a href="/settings" class="btn btn-icon status-settings-link" title="Settings">&#9881;</a>
 		<span class="status-user">${escapeHtml(user.fullName || user.email)}</span>
 		${noteMetaFragment({ createdTime: 0, updatedTime: 0 })}
 		<span class="status-spacer"></span>
 		<select class="theme-picker" onchange="setTheme(this.value)">
 			<option value="matrix">Matrix</option>
+			<option value="dark-grey">Dark Grey</option>
+			<option value="dark-red">Dark Red</option>
 			<option value="dark">Dark</option>
 			<option value="light">Light</option>
 			<option value="oled-dark">OLED Dark</option>
@@ -473,20 +561,18 @@ const layoutPage = (options = {}) => {
 	function toggleNavFolder(id,force){var el=document.querySelector('.nav-folder[data-folder-id="'+id.replace(/"/g,'\\"')+'"]');if(!el)return;var collapsed=force===undefined?!el.classList.contains('collapsed'):!force;el.classList.toggle('collapsed',collapsed);var s=navFolderState();s[id]=collapsed?'0':'1';saveNavFolderState(s)}
 	function getTA(){return document.getElementById('note-body')}
 	function getPV(){var pv=document.getElementById('note-preview');return pv&&pv.style.display!=='none'?pv:null}
-	var _cleanMd=localStorage.getItem('joplock-clean-md')!=='0';
-	function cleanForDisplay(md){return md.split('\\n').map(function(l){return l==='<br>'?'':l}).join('\\n')}
-	function dirtyForSave(md){var lines=md.split('\\n');var out=[];for(var i=0;i<lines.length;i++){if(lines[i]===''&&i>0&&out.length>0&&out[out.length-1]===''){out.push('<br>');continue}out.push(lines[i])}return out.join('\\n')}
-	function applyCleanMd(){var ta=getTA();if(!ta)return;var btn=document.getElementById('clean-md-toggle');if(_cleanMd){ta.value=cleanForDisplay(ta.value);if(btn)btn.classList.add('active')}else{ta.value=dirtyForSave(ta.value);if(btn)btn.classList.remove('active')}}
-	function toggleCleanMd(){_cleanMd=!_cleanMd;localStorage.setItem('joplock-clean-md',_cleanMd?'1':'0');applyCleanMd()}
+	var _editorMode='markdown';
+	function syncEditorModeButtons(){var mdBtn=document.getElementById('markdown-toggle');var pvBtn=document.getElementById('preview-toggle');if(mdBtn)mdBtn.classList.toggle('active',_editorMode==='markdown');if(pvBtn)pvBtn.classList.toggle('active',_editorMode==='preview')}
 	function applyMobileTitleMode(){var ti=document.querySelector('.editor-title');if(!ti)return;var mobile=window.innerWidth<=768;ti.contentEditable=mobile?'false':'true';ti.classList.toggle('editor-title-mobile-readonly',mobile)}
 	var _pvSyncTimer=null;
-	function syncPV(){var pv=getPV(),ta=getTA();if(pv&&ta){var md=htmlToMarkdown(pv);if(_cleanMd){ta.value=cleanForDisplay(md)}else{ta.value=md}ta.dispatchEvent(new Event('input',{bubbles:true}))}}
+	var _previewDirty=false;
+	function syncPV(){var pv=getPV(),ta=getTA();if(pv&&ta){var md=htmlToMarkdown(pv);if(ta.value!==md){ta.value=md;ta.dispatchEvent(new Event('input',{bubbles:true}))}_previewDirty=false}}
 	function scheduleSyncPV(){if(_pvSyncTimer)clearTimeout(_pvSyncTimer);_pvSyncTimer=setTimeout(function(){_pvSyncTimer=null;syncPV();autoTitle()},150)}
 	// Auto-title: first line of body becomes title unless user manually edited it
 	var _titleManual=false;
 	function syncTitle(){var ti=document.querySelector('.editor-title');var hi=document.querySelector('.editor-title-hidden');if(ti&&hi){hi.value=ti.textContent;hi.dispatchEvent(new Event('input',{bubbles:true}));ti.innerHTML=renderInlineMd(ti.textContent)}}
 	function initAutoTitle(){_titleManual=false;var ti=document.querySelector('.editor-title');if(ti){ti.addEventListener('input',function(){_titleManual=true;syncTitle()})}}
-	function autoTitle(){if(_titleManual)return;var ta=getTA();var ti=document.querySelector('.editor-title');if(!ta||!ti)return;var val=_cleanMd?dirtyForSave(ta.value):ta.value;var lines=val.split('\\n');var first='';for(var i=0;i<lines.length;i++){var l=lines[i].replace(/^#+\\s*/,'').trim();if(l){first=l;break}}if(first&&first!==ti.textContent){ti.innerHTML=renderInlineMd(first);var hi=document.querySelector('.editor-title-hidden');if(hi){hi.value=first;hi.dispatchEvent(new Event('input',{bubbles:true}))}}}
+	function autoTitle(){if(_titleManual)return;var ta=getTA();var ti=document.querySelector('.editor-title');if(!ta||!ti)return;var val=ta.value;var lines=val.split('\\n');var first='';for(var i=0;i<lines.length;i++){var l=lines[i].replace(/^#+\\s*/,'').trim();if(l){first=l;break}}if(first&&first!==ti.textContent){ti.innerHTML=renderInlineMd(first);var hi=document.querySelector('.editor-title-hidden');if(hi){hi.value=first;hi.dispatchEvent(new Event('input',{bubbles:true}))}}}
 	function pad2(value){return String(value).padStart(2,'0')}
 	function formatStamp(kind){var d=new Date();var months=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];if(kind==='datetime')return d.getFullYear()+'-'+pad2(d.getMonth()+1)+'-'+pad2(d.getDate())+' '+pad2(d.getHours())+':'+pad2(d.getMinutes());return months[d.getMonth()]+'-'+pad2(d.getDate())+'-'+String(d.getFullYear()).slice(-2)}
 	function renderInlineMd(t){if(!t)return '';var h=t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');h=h.replace(/\\*\\*(.+?)\\*\\*/g,'<strong>$1</strong>');h=h.replace(/\\*(.+?)\\*/g,'<em>$1</em>');h=h.replace(/~~(.+?)~~/g,'<del>$1</del>');h=h.replace(/\\+\\+(.+?)\\+\\+/g,'<u>$1</u>');h=h.replace(/\`([^\`]+)\`/g,'<code>$1</code>');return h}
@@ -555,22 +641,21 @@ const layoutPage = (options = {}) => {
 		}
 		return out
 	}
-	function togglePreview(){var ta=document.getElementById('note-body'),pv=document.getElementById('note-preview'),tb=document.getElementById('editor-toolbar'),btn=document.getElementById('preview-toggle'),cleanBtn=document.getElementById('clean-md-toggle');if(!ta||!pv)return;if(pv.style.display==='none'){var body=_cleanMd?dirtyForSave(ta.value):ta.value;fetch('/fragments/preview',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'body='+encodeURIComponent(body)}).then(function(r){return r.text()}).then(function(h){pv.innerHTML=h;pv.contentEditable='true';pv.style.display='';ta.style.display='none';if(btn)btn.innerHTML='&#9998;';if(btn)btn.title='Edit';if(cleanBtn)cleanBtn.style.display='none';activatePV(pv)})}else{if(_pvSyncTimer){clearTimeout(_pvSyncTimer);_pvSyncTimer=null}if(pv.contentEditable==='true'){var md=htmlToMarkdown(pv);ta.value=_cleanMd?cleanForDisplay(md):md}ta.dispatchEvent(new Event('input',{bubbles:true}));pv.contentEditable='false';pv.oninput=null;pv.onkeyup=null;pv.style.display='none';ta.style.display='';if(tb)tb.style.display='';if(btn)btn.innerHTML='&#128065;';if(btn)btn.title='Preview';if(cleanBtn)cleanBtn.style.display='inline-flex'}}
+	function setEditorMode(mode){var ta=document.getElementById('note-body'),pv=document.getElementById('note-preview'),tb=document.getElementById('editor-toolbar');if(!ta||!pv)return;if(mode==='preview'){_previewDirty=false;fetch('/fragments/preview',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'body='+encodeURIComponent(ta.value)}).then(function(r){return r.text()}).then(function(h){pv.innerHTML=h;pv.contentEditable='true';pv.style.display='';ta.style.display='none';_editorMode='preview';syncEditorModeButtons();activatePV(pv)})}else{if(_pvSyncTimer){clearTimeout(_pvSyncTimer);_pvSyncTimer=null}if(pv.contentEditable==='true'&&_previewDirty){var md=htmlToMarkdown(pv);if(ta.value!==md){ta.value=md;ta.dispatchEvent(new Event('input',{bubbles:true}))}_previewDirty=false}pv.contentEditable='false';pv.oninput=null;pv.onkeyup=null;pv.style.display='none';ta.style.display='';if(tb)tb.style.display='';_editorMode='markdown';syncEditorModeButtons()}}
 	document.addEventListener('keydown',function(e){if(e.key==='Escape'){closeFolderContextMenu();closeFolderModal()}if(!getTA()&&!getPV())return;if((e.ctrlKey||e.metaKey)&&e.key==='b'){e.preventDefault();wrapSel('**','**')}if((e.ctrlKey||e.metaKey)&&e.key==='i'){e.preventDefault();wrapSel('*','*')}});
 	document.addEventListener('click',function(e){var menu=document.getElementById('folder-context-menu');if(menu&&!menu.hidden&&!menu.contains(e.target))closeFolderContextMenu()});
-	function activatePV(pv){if(!pv)return;pv.contentEditable='true';initImgResize(pv);pv.oninput=scheduleSyncPV;pv.onkeyup=null;if(pv.dataset.pvInit)return;pv.dataset.pvInit='1';
+	function activatePV(pv){if(!pv)return;pv.contentEditable='true';initImgResize(pv);pv.oninput=function(){_previewDirty=true;scheduleSyncPV()};pv.onkeyup=null;if(pv.dataset.pvInit)return;pv.dataset.pvInit='1';
 		// Click checkbox icon to toggle checked state
 		pv.addEventListener('click',function(e){var cb=e.target.closest('.md-checkbox');if(!cb)return;var txt=cb.firstChild;if(!txt||txt.nodeType!==3)return;var icon=txt.textContent.charAt(0);if(icon!=='\u2610'&&icon!=='\u2611')return;var r=document.createRange();r.setStart(txt,0);r.setEnd(txt,Math.min(2,txt.textContent.length));var iconRect=r.getBoundingClientRect();if(e.clientX>iconRect.right)return;e.preventDefault();var checked=!cb.classList.contains('checked');cb.classList.toggle('checked',checked);txt.textContent=(checked?'\u2611':'\u2610')+txt.textContent.slice(1);syncPV()});
 		// Enter inside code blocks should stay in the same block; Enter after checkbox creates new checkbox
 		pv.addEventListener('keydown',function(e){if(e.key==='Enter'){var sel=window.getSelection();if(!sel.rangeCount)return;var range=sel.getRangeAt(0);var node=range.startContainer;var el=node.nodeType===3?node.parentElement:node;var pre=el&&el.closest?el.closest('pre'):null;if(pre&&pv.contains(pre)){e.preventDefault();if(insertPVText('\\n'))syncPV();return}var cb=el&&el.closest?el.closest('.md-checkbox'):null;if(!cb&&node.nodeType===1&&range.startOffset>0){var prev=node.childNodes[range.startOffset-1];if(prev&&prev.nodeType===1&&prev.classList&&prev.classList.contains('md-checkbox'))cb=prev}if(!cb)return;e.preventDefault();var label=(cb.textContent||'').replace(/^[\\u2610\\u2611][\\u00a0 ]*/,'').replace(/\\u00a0|\\s/g,'');if(!label){var para=document.createElement('p');para.innerHTML='<br>';if(cb.parentNode)cb.parentNode.replaceChild(para,cb);var rp=document.createRange();rp.setStart(para,0);rp.collapse(true);sel.removeAllRanges();sel.addRange(rp);para.scrollIntoView({block:'nearest'});syncPV();return}var neo=document.createElement('div');neo.className='md-checkbox';var tn=document.createTextNode('\u2610\u00a0');neo.appendChild(tn);cb.parentNode.insertBefore(neo,cb.nextSibling);var r=document.createRange();r.setStart(tn,2);r.collapse(true);sel.removeAllRanges();sel.addRange(r);neo.scrollIntoView({block:'nearest'});syncPV();return}});
 		// Scroll to keep cursor visible while typing
 		pv.addEventListener('input',function(){var sel=window.getSelection();if(sel&&sel.rangeCount){var r=sel.getRangeAt(0).getBoundingClientRect();var pr=pv.getBoundingClientRect();if(r.bottom>pr.bottom-8)pv.scrollTop+=r.bottom-pr.bottom+24}})}
-	function initEditorPanel(){var form=document.getElementById('note-editor-form');if(!form||form.dataset.editorInit)return;form.dataset.editorInit='1';if(window.innerWidth<=768)closeNav();var status=document.getElementById('autosave-status');if(status&&!status.innerHTML)status.innerHTML='<span class="autosave-ok">Saved</span>';form.addEventListener('input',function(){markEdited()});initAutoTitle();applyMobileTitleMode();renderNoteMeta();var ta=getTA();if(ta){ta.addEventListener('input',function(){autoTitle()});if(_cleanMd)ta.value=cleanForDisplay(ta.value)}var pv=document.getElementById('note-preview');if(pv&&pv.style.display!=='none'){activatePV(pv)}var btn=document.getElementById('clean-md-toggle');if(btn){btn.style.display=pv&&pv.style.display!=='none'?'none':'inline-flex';if(_cleanMd)btn.classList.add('active')}}
+	function initEditorPanel(){var form=document.getElementById('note-editor-form');if(!form||form.dataset.editorInit)return;form.dataset.editorInit='1';if(window.innerWidth<=768)closeNav();var status=document.getElementById('autosave-status');if(status&&!status.innerHTML)status.innerHTML='<span class="autosave-ok">Saved</span>';form.addEventListener('input',function(){markEdited()});initAutoTitle();applyMobileTitleMode();renderNoteMeta();var ta=getTA();if(ta){ta.addEventListener('input',function(){autoTitle()})}var pv=document.getElementById('note-preview');if(pv&&pv.style.display!=='none'){_editorMode='preview';activatePV(pv)}else{_editorMode='markdown'}syncEditorModeButtons()}
 	function initNavPanel(){var state=navFolderState();document.querySelectorAll('.nav-folder').forEach(function(el){var id=el.getAttribute('data-folder-id');var selected=el.getAttribute('data-selected')==='1';var open=state[id]===true||state[id]==='1'||state[id]===1;if(state[id]===undefined)open=false;if(selected)open=true;el.classList.toggle('collapsed',!open)})}
 	document.body.addEventListener('htmx:afterSettle',function(){initNavPanel();initEditorPanel()});
 	window.addEventListener('load',function(){initNavPanel();initEditorPanel()});
 	window.addEventListener('resize',applyMobileTitleMode);
-	document.body.addEventListener('htmx:configRequest',function(e){if(e.detail.parameters&&e.detail.parameters.body&&_cleanMd){e.detail.parameters.body=dirtyForSave(e.detail.parameters.body)}});
 	</script>
 </body>
 </html>`;
@@ -652,6 +737,7 @@ module.exports = {
 	renderInlineMarkdown,
 	renderMarkdown,
 	searchResultsFragment,
+	settingsPage,
 	layoutPage,
 	loggedOutPage,
 };

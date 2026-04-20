@@ -67,6 +67,7 @@ const defaultMocks = (overrides = {}) => ({
 	itemWriteService: {
 		createFolder: async () => ({ id: 'folder-created' }),
 		deleteFolder: async () => {},
+		updateFolder: async () => ({ id: 'folder-updated' }),
 		createNote: async () => ({ id: 'note-created' }),
 		deleteNote: async () => {},
 		trashNote: async () => {},
@@ -81,6 +82,19 @@ const defaultMocks = (overrides = {}) => ({
 			return null;
 		},
 		...overrides.sessionService,
+	},
+	settingsService: {
+		settingsByUserId: async () => ({ noteFontSize: 15, codeFontSize: 12, noteMonospace: false, dateFormat: 'MMM-DD-YY', datetimeFormat: 'YYYY-MM-DD HH:mm' }),
+		saveSettings: async (_userId, settings) => settings,
+		...overrides.settingsService,
+	},
+	mfaService: {
+		enabled: () => false,
+		verify: () => true,
+		otpauthUri: () => '',
+		qrDataUrl: () => '',
+		maskedSeed: () => '',
+		...overrides.mfaService,
 	},
 });
 
@@ -509,7 +523,83 @@ test('GET /login returns login page for unauthenticated user', async () => {
 		const res = await request(port, { path: '/login', headers: {} });
 		assert.equal(res.statusCode, 200);
 		assert.ok(res.body.includes('Login'));
+		assert.ok(!res.body.includes('Authentication code'));
 		assert.ok(!res.body.includes('NOTEBOOKS'));
+	});
+});
+
+test('POST /login rejects invalid MFA code when enabled', async () => {
+	await withServer({
+		mfaService: {
+			enabled: () => true,
+			verify: () => false,
+		},
+	}, async port => {
+		const res = await request(port, {
+			path: '/login',
+			method: 'POST',
+			headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+			body: 'email=user%40example.com&password=test&totp=000000',
+		});
+		assert.equal(res.statusCode, 302);
+		assert.ok(res.headers.location.includes('/login?error='));
+		assert.ok(res.headers.location.includes('Authentication%20code'));
+	});
+});
+
+test('GET /settings redirects unauthenticated user to login', async () => {
+	await withServer({}, async port => {
+		const res = await request(port, { path: '/settings', headers: {} });
+		assert.equal(res.statusCode, 302);
+		assert.equal(res.headers.location, '/login');
+	});
+});
+
+test('GET /settings shows font controls and MFA QR when enabled', async () => {
+	await withServer({
+		settingsService: {
+			settingsByUserId: async () => ({ noteFontSize: 17, codeFontSize: 13, noteMonospace: true, dateFormat: 'DD/MM/YYYY', datetimeFormat: 'DD/MM/YYYY HH:mm' }),
+		},
+		mfaService: {
+			enabled: () => true,
+			qrDataUrl: () => 'data:image/svg+xml,test',
+			maskedSeed: () => 'QCYDBHJG6HK6FSMX',
+		},
+	}, async port => {
+		const res = await request(port, { path: '/settings' });
+		assert.equal(res.statusCode, 200);
+		assert.ok(res.body.includes('Joplock Settings'));
+		assert.ok(res.body.includes('settings-note-font'));
+		assert.ok(res.body.includes('value="17"'));
+		assert.ok(res.body.includes('Use monospace for note text'));
+		assert.ok(res.body.includes('data:image/svg+xml,test'));
+		assert.ok(res.body.includes('QCYDBHJG6HK6FSMX'));
+	});
+});
+
+test('POST /settings saves DB-backed settings', async () => {
+	let saved = null;
+	await withServer({
+		settingsService: {
+			settingsByUserId: async () => ({ noteFontSize: 15, codeFontSize: 12, noteMonospace: false, dateFormat: 'MMM-DD-YY', datetimeFormat: 'YYYY-MM-DD HH:mm' }),
+			saveSettings: async (_userId, settings) => { saved = settings; return settings; },
+		},
+	}, async port => {
+		const res = await request(port, {
+			path: '/settings',
+			method: 'POST',
+			headers: { Cookie: 'sessionId=test-session', 'Content-Type': 'application/x-www-form-urlencoded' },
+			body: 'noteFontSize=18&codeFontSize=14&noteMonospace=1&dateFormat=DD%2FMM%2FYYYY&datetimeFormat=DD%2FMM%2FYYYY%20HH%3Amm',
+		});
+		assert.equal(res.statusCode, 302);
+		assert.equal(res.headers.location, '/settings?saved=1');
+		assert.deepEqual(saved, {
+			noteFontSize: '18',
+			codeFontSize: '14',
+			noteMonospace: '1',
+			dateFormat: 'DD/MM/YYYY',
+			datetimeFormat: 'DD/MM/YYYY HH:mm',
+		});
 	});
 });
 

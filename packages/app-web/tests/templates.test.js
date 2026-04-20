@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const vm = require('node:vm');
 const fs = require('node:fs');
 const path = require('node:path');
-const { autosaveConflictFragment, editorFragment, layoutPage, loggedOutPage, navigationFragment, renderMarkdown } = require('../app/templates');
+const { autosaveConflictFragment, editorFragment, layoutPage, loggedOutPage, navigationFragment, renderMarkdown, settingsPage } = require('../app/templates');
 
 test('autosaveConflictFragment wires overwrite and create copy actions', () => {
 	const html = autosaveConflictFragment('n1');
@@ -33,6 +33,10 @@ test('editorFragment includes date and datetime toolbar buttons', () => {
 	assert.ok(html.includes('title="Insert date and time"'));
 	assert.ok(html.includes('insertStamp(\'date\')'));
 	assert.ok(html.includes('insertStamp(\'datetime\')'));
+	assert.ok(html.includes('id="markdown-toggle"'));
+	assert.ok(html.includes('id="preview-toggle"'));
+	assert.ok(html.includes('onclick="setEditorMode(\'markdown\')"'));
+	assert.ok(html.includes('onclick="setEditorMode(\'preview\')"'));
 });
 
 test('navigationFragment shows trash folder empty action', () => {
@@ -107,9 +111,32 @@ test('logged out page shows cleanup progress and login link', () => {
 
 test('logged in layout uses logout navigation link', () => {
 	const html = layoutPage({ user: { email: 'user@example.com', fullName: 'User' }, navContent: '' });
+	assert.ok(html.includes('<a href="/settings" class="btn btn-icon status-settings-link" title="Settings">&#9881;</a>'));
 	assert.ok(html.includes('<a href="/logout" class="btn btn-sm btn-secondary logout-link">Logout</a>'));
 	assert.ok(!html.includes('logoutNow(event)'));
 	assert.ok(!html.includes('hx-post="/logout"'));
+});
+
+test('settings page renders font controls and MFA details', () => {
+	const html = settingsPage({ user: { email: 'user@example.com' }, settings: { noteFontSize: 17, codeFontSize: 13, noteMonospace: true, dateFormat: 'DD/MM/YYYY', datetimeFormat: 'DD/MM/YYYY HH:mm' }, mfaEnabled: true, mfaQrDataUrl: 'data:image/svg+xml,test', mfaSeed: 'QCYDBHJG6HK6FSMX' });
+	assert.ok(html.includes('Joplock Settings'));
+	assert.ok(html.includes('id="settings-note-font"'));
+	assert.ok(html.includes('id="settings-code-font"'));
+	assert.ok(html.includes('id="settings-note-monospace"'));
+	assert.ok(html.includes('id="settings-date-format"'));
+	assert.ok(html.includes('id="settings-datetime-format"'));
+	assert.ok(html.includes('Joplock-specific two-factor authentication'));
+	assert.ok(html.includes('data:image/svg+xml,test'));
+	assert.ok(html.includes('QCYDBHJG6HK6FSMX'));
+	assert.ok(html.includes('Use monospace for note text'));
+	assert.ok(html.includes('Save settings'));
+});
+
+test('logged out layout only shows auth code field when MFA is enabled', () => {
+	const disabledHtml = layoutPage({ user: null, loginError: '', mfaEnabled: false });
+	const enabledHtml = layoutPage({ user: null, loginError: '', mfaEnabled: true });
+	assert.ok(!disabledHtml.includes('Authentication code'));
+	assert.ok(enabledHtml.includes('Authentication code'));
 });
 
 test('logged in layout preserves plain square brackets on preview round trip', () => {
@@ -121,6 +148,8 @@ test('logged in layout preserves plain square brackets on preview round trip', (
 
 test('logged in layout includes extended Joplin theme options', () => {
 	const html = layoutPage({ user: { email: 'user@example.com', fullName: 'User' }, navContent: '' });
+	assert.ok(html.includes('<option value="dark-grey">Dark Grey</option>'));
+	assert.ok(html.includes('<option value="dark-red">Dark Red</option>'));
 	assert.ok(html.includes('<option value="oled-dark">OLED Dark</option>'));
 	assert.ok(html.includes('<option value="solarized-light">Solarized Light</option>'));
 	assert.ok(html.includes('<option value="solarized-dark">Solarized Dark</option>'));
@@ -131,6 +160,12 @@ test('logged in layout includes extended Joplin theme options', () => {
 
 test('logged in layout uses ordered list command and block transforms in preview toolbar', () => {
 	const html = layoutPage({ user: { email: 'user@example.com', fullName: 'User' }, navContent: '' });
+	assert.ok(html.includes('function syncEditorModeButtons(){'));
+	assert.ok(html.includes('mdBtn.classList.toggle(\'active\',_editorMode===\'markdown\')'));
+	assert.ok(html.includes('pvBtn.classList.toggle(\'active\',_editorMode===\'preview\')'));
+	assert.ok(html.includes('var _previewDirty=false;'));
+	assert.ok(html.includes('if(pv.contentEditable===\'true\'&&_previewDirty)'));
+	assert.ok(!html.includes('clean-md-toggle'));
 	assert.ok(html.includes('function transformPVBlock(tagName,defaultText)'));
 	assert.ok(html.includes('document.execCommand(\'insertOrderedList\',false,null)'));
 	assert.ok(html.includes('if(p===\'> \'&&transformPVBlock(\'blockquote\',\'Quote\'))return'));
@@ -155,9 +190,9 @@ test('logged in layout emits inline script that parses', () => {
 	assert.ok(match[1].includes('function submitFolderEdit(event)'));
 });
 
-test('styles define ordered list spacing and white matrix note text', () => {
+test('styles define ordered list spacing and matrix note text token', () => {
 	const css = fs.readFileSync(path.join(__dirname, '../public/styles.css'), 'utf8');
-	assert.ok(css.includes('--text: #ffffff;'));
+	assert.ok(css.includes('--text: #e8fbe8;'));
 	assert.ok(css.includes('.editor-preview ul, .editor-preview ol { padding-left: 1.5em; margin: 0.5em 0; }'));
 	assert.ok(css.includes('.editor-preview > h1:first-child,'));
 	assert.ok(css.includes('.logout-progress {'));
@@ -165,6 +200,13 @@ test('styles define ordered list spacing and white matrix note text', () => {
 	assert.ok(css.includes('.logout-step-check {'));
 	assert.ok(css.includes('.logout-detail {'));
 	assert.ok(css.includes('.logout-detail.open {'));
+	assert.ok(css.includes('body.note-body-monospace,'));
+	assert.ok(css.includes('.status-settings-link {'));
+	assert.ok(css.includes('.settings-page {'));
+	assert.ok(css.includes('.settings-form {'));
+	assert.ok(css.includes('.settings-actions {'));
+	assert.ok(css.includes('.settings-qr {'));
+	assert.ok(css.includes('.btn.active {'));
 	assert.ok(css.includes('--font-size-note: 15px;'));
 	assert.ok(css.includes('--font-size-code: 12px;'));
 	assert.ok(css.includes('font-size: var(--font-size-note);'));

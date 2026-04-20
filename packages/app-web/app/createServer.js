@@ -158,6 +158,7 @@ const serveFile = (response, filePath) => {
 
 const createServer = options => {
 	const {
+		mfaService,
 		publicDir,
 		joplinPublicBasePath,
 		joplinPublicBaseUrl,
@@ -165,6 +166,7 @@ const createServer = options => {
 		joplinServerOrigin,
 		sessionService,
 		itemService,
+		settingsService,
 		itemWriteService,
 	} = options;
 
@@ -189,6 +191,8 @@ const createServer = options => {
 		const allFolders = folders.concat([trashFolder(trashedNotes)]);
 		return { folders: allFolders, notes: allNotes };
 	};
+
+	const userSettings = async userId => settingsService ? settingsService.settingsByUserId(userId) : null;
 
 	const upstreamRequestContext = _request => ({
 		host: configuredServerPublicUrl.host,
@@ -240,6 +244,48 @@ const createServer = options => {
 		// --- Health check ---
 		if (url.pathname === '/health') {
 			send(response, 200, 'ok', { 'Content-Type': 'text/plain; charset=utf-8' });
+			return;
+		}
+
+		if (url.pathname === '/settings' && request.method === 'GET') {
+			const auth = await authenticatedUser(request);
+			if (auth.error || !auth.user) {
+				response.writeHead(302, { Location: '/login' });
+				response.end();
+				return;
+			}
+			const settings = await userSettings(auth.user.id);
+			let mfaQrDataUrl = '';
+			if (mfaService.enabled()) {
+				mfaQrDataUrl = mfaService.qrDataUrl(auth.user.email);
+			}
+			sendHtml(response, 200, templates.settingsPage({
+				user: auth.user,
+				settings,
+				mfaEnabled: mfaService.enabled(),
+				mfaQrDataUrl,
+				mfaSeed: mfaService.maskedSeed(),
+			}));
+			return;
+		}
+
+		if (url.pathname === '/settings' && request.method === 'POST') {
+			const auth = await authenticatedUser(request);
+			if (auth.error || !auth.user) {
+				response.writeHead(302, { Location: '/login' });
+				response.end();
+				return;
+			}
+			const body = await parseBody(request);
+			await settingsService.saveSettings(auth.user.id, {
+				noteFontSize: body.noteFontSize,
+				codeFontSize: body.codeFontSize,
+				noteMonospace: body.noteMonospace,
+				dateFormat: body.dateFormat,
+				datetimeFormat: body.datetimeFormat,
+			});
+			response.writeHead(302, { Location: '/settings?saved=1' });
+			response.end();
 			return;
 		}
 
@@ -777,8 +823,14 @@ const createServer = options => {
 				const body = await parseBody(request);
 				const email = body.email || '';
 				const password = body.password || '';
+				const totp = body.totp || '';
 				if (!email || !password) {
 					response.writeHead(302, { Location: `/login?error=${encodeURIComponent('Email and password are required')}` });
+					response.end();
+					return;
+				}
+				if (mfaService.enabled() && !mfaService.verify(totp)) {
+					response.writeHead(302, { Location: `/login?error=${encodeURIComponent('Authentication code is required or invalid')}` });
 					response.end();
 					return;
 				}
@@ -841,6 +893,8 @@ const createServer = options => {
 				sendHtml(response, 200, templates.layoutPage({
 					user: null,
 					joplinBasePath: joplinPublicBasePath,
+					settings: null,
+					mfaEnabled: mfaService.enabled(),
 					loginError: url.searchParams.get('error') || '',
 				}));
 				return;
@@ -855,6 +909,8 @@ const createServer = options => {
 			sendHtml(response, 200, templates.layoutPage({
 				user: null,
 				joplinBasePath: joplinPublicBasePath,
+				settings: null,
+				mfaEnabled: mfaService.enabled(),
 				loginError: url.searchParams.get('error') || '',
 			}));
 			return;
@@ -878,11 +934,13 @@ const createServer = options => {
 					return;
 				}
 
+				const settings = await userSettings(auth.user.id);
 				const { folders, notes } = await navData(auth.user.id);
 				const selectedFolderId = '';
 
 				sendHtml(response, 200, templates.layoutPage({
 					user: auth.user,
+					settings,
 					navContent: templates.navigationFragment(folders, notes, selectedFolderId, ''),
 					joplinBasePath: joplinPublicBasePath,
 				}));
